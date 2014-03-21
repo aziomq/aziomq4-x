@@ -1,0 +1,12 @@
+I have tested this on Linux (Arch recent vintage) using GCC4.8 and OSX Mavericks (XCode 5.1 and bare Clang3.4).
+
+The build requires a modern version of cmake (2.8 or later)
+
+basic process - 
+
+$ mkdir build && cd build
+$ cmake ..
+$ make
+
+TODO - This still needs an install target (Real Soon Now)
+
