@@ -6,7 +6,7 @@ basic process -
 
 $ mkdir build && cd build
 $ cmake ..
-$ make
+$ make install
 
-TODO - This still needs an install target (Real Soon Now)
 
+To change the install location use -DCMAKE_INSTALL_PREFIX when invoking cmake
