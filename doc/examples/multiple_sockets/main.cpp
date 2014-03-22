@@ -4,7 +4,6 @@
 #include <boost/asio.hpp>
 
 #include <array>
-#include <iostream>
 
 namespace asio = boost::asio;
 
