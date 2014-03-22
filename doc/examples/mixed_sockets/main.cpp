@@ -5,6 +5,7 @@
 #include <boost/system/system_error.hpp>
 
 #include <array>
+#include <algorithm>
 
 namespace asio = boost::asio;
 
@@ -17,16 +18,17 @@ void setup_socket(asio::ip::udp::socket & socket,
     socket.set_option(asio::ip::multicast::join_group(listen, group.address().to_v4()));
 }
 
-size_t translate(void * exch_buf, void * res_buf, size_t packet_size) {
+size_t translate(const char* exch_buf, char* res_buf, size_t packet_size) {
     // normalize external representation
     // ...
-    return 424;
+    std::copy_n(exch_buf, packet_size, res_buf);
+    return packet_size;
 }
 
 int main(int argc, char **argv) {
     asio::io_service ios;
 
-    // receive exchange traffice on udp multicast
+    // receive exchange traffic on udp multicast
     asio::ip::udp::socket exchange(ios);
     asio::ip::udp::endpoint group;
     group.address(asio::ip::address::from_string("242.1.1.1"));
