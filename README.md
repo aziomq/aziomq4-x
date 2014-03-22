@@ -72,6 +72,8 @@ int main(int argc, char** argv) {
 }
 ```
 
+Further examples may be found in doc/examples
+
 ## Copying
 
 Use of this software is granted under the the BOOST 1.0 license

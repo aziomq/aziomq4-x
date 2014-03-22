@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
 
     std::array<char, 4096> buf;
     responder.async_receive(asio::buffer(buf), [&](const boost::system::error_code & ec,
-                                                   int bytes_transferred) {
+                                                   size_t bytes_transferred) {
                if (ec)  {
                     std::cout << "Error " << ec;
                     return;
