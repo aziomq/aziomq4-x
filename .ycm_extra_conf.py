@@ -34,8 +34,6 @@ import ycm_core
 # Things that are relative to the toolchain installation
 platform_flags = [
 '-isystem',
-'/site/apps/clang-3.4/include/c++/v1',
-'-isystem',
 '/usr/include',
 '-isystem',
 '/usr/local/include'
