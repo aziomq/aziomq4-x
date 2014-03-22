@@ -187,7 +187,7 @@ namespace aziomq { namespace opt {
         value_t value;
 
         opt_binary() = default;
-        opt_binary(void *pv, size_t size) :
+        opt_binary(const void *pv, size_t size) :
             value(from_pv(pv, size)) { }
 
         int name() const { return N; }
@@ -205,8 +205,8 @@ namespace aziomq { namespace opt {
 
         operator value_t() const { return value; }
 
-        static std::vector<uint8_t> from_pv(void *pv, size_t size) {
-            auto p = reinterpret_cast<value_t::value_type*>(pv);
+        static std::vector<uint8_t> from_pv(const void *pv, size_t size) {
+            auto p = reinterpret_cast<const value_t::value_type*>(pv);
             if (!p) return value_t();
             return value_t(p, p + size);
         }
@@ -214,10 +214,12 @@ namespace aziomq { namespace opt {
 
     struct subscribe : opt_binary<ZMQ_SUBSCRIBE> {
         subscribe(void *pv, size_t size) : opt_binary{ pv, size } { }
+        subscribe(const std::string & v) : opt_binary(v.data(), v.size()) { }
     };
 
     struct unsubscribe : opt_binary<ZMQ_UNSUBSCRIBE> {
         unsubscribe(void *pv, size_t size) : opt_binary{ pv, size } { }
+        unsubscribe(const std::string & v) : opt_binary(v.data(), v.size()) { }
     };
 
     struct identity : opt_binary<ZMQ_IDENTITY> {

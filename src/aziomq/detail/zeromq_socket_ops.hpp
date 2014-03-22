@@ -43,7 +43,7 @@ namespace socket_ops {
         BOOST_ASSERT_MSG(socket, "Invalid socket");
 
         ec = boost::system::error_code();
-        auto rc = zmq_setsockoption(socket, option.name(), option.data(), option.size());
+        auto rc = zmq_setsockopt(socket, option.name(), option.data(), option.size());
         if (rc)
             ec = make_error_code();
         return ec;
@@ -57,7 +57,7 @@ namespace socket_ops {
 
         ec = boost::system::error_code();
         size_t size = option.size();
-        auto rc = zmq_getsockoption(socket, option.name(), option.data(), &size);
+        auto rc = zmq_getsockopt(socket, option.name(), option.data(), &size);
         if (rc && errno == EINVAL) {
             option.resize(size);
             rc = zmq_getsockoption(socket, option.name(), option.data(), &size);

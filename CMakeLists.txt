@@ -21,6 +21,7 @@ include_directories(${Boost_INCLUDE_DIRS}
 
 enable_testing()
 add_subdirectory(src)
+add_subdirectory(doc/examples)
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/src/aziomq
         DESTINATION include)
