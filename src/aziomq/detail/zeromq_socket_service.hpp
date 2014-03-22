@@ -26,6 +26,7 @@
 #include <string>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace aziomq {
 namespace detail {
@@ -45,7 +46,7 @@ namespace detail {
         struct implementation_type {
             socket_type socket_;
             int shutdown_;
-            endpoint_type endpoint_;
+            std::vector<endpoint_type> endpoint_;
 
             reactor::per_descriptor_data reactor_data_;
         };
@@ -79,7 +80,7 @@ namespace detail {
             other.shutdown_ = -1;
 
             impl.endpoint_ = other.endpoint_;
-            other.endpoint_ = std::string();
+            other.endpoint_.clear();
 
             other_service.reactor_.move_descriptor(native_handle(impl),
                                         impl.reactor_data_, other.reactor_data_);
@@ -95,8 +96,7 @@ namespace detail {
             impl.shutdown_ = other.shutdown_;
             other.shutdown_ = -1;
 
-            impl.endpoint_ = other.endpoint_;
-            other.endpoint_ = std::string();
+            impl.endpoint_ = std::move(other.endpoint_);
 
             other_service.reactor_.move_descriptor(native_handle(impl),
                                         impl.reactor_data_, other.reactor_data_);
@@ -218,7 +218,10 @@ namespace detail {
             return res;
         }
 
-        endpoint_type endpoint(const implementation_type & impl) const { return impl.endpoint_; }
+        endpoint_type endpoint(const implementation_type & impl) const {
+            return impl.endpoint_.empty() ? endpoint_type() 
+                                          : *impl.endpoint_.begin(); 
+        }
 
         boost::system::error_code bind(implementation_type & impl,
                                        const endpoint_type & endpoint,
@@ -231,7 +234,7 @@ namespace detail {
             if (ec)
                 return ec;
 
-            impl.endpoint_ = endpoint;
+            impl.endpoint_.push_back(endpoint);
             return ec;
         }
 
@@ -246,7 +249,7 @@ namespace detail {
             if (ec)
                 return ec;
 
-            impl.endpoint_ = endpoint;
+            impl.endpoint_.push_back(endpoint);
             return ec;
         }
 
