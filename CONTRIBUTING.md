@@ -5,11 +5,16 @@ If you are familiar with ZeroMQ's process, there should be few surprises here.
 Development is done on Github. Ideally the process follows the ZeroMQ community's
 [C4] (http://rfc.zeromq.org/spec:22) process guidelines (see licensing notes
 below though). The high points, in particular are:
+
 *Log an issue (Github only) that explains the problem you are solving.
+
 *Provide a test case, unless absolutely impossible.
+
 *If you are making a change to the stable version, an issue and test case
 are required.
+
 *Make your change as a pull request (Github only, see guidelines below)
+
 *Close the issue when your pull request is merged and the test case passes.
 
 ## Contribution guidelines -
@@ -32,11 +37,14 @@ messages is:
 or so (with a hard maximum of 80 characters), since it can be used as the e-mail
 subject when submitting your patch and for generating patch file names by
 'git format-patch'.
+
 * A blank line
+
 * A detailed description of your change.  Where possible, write in the present tense.
 If your changes have not resulted from a previous discussion, you should also
 include a brief rationale for your change.  Your description should be formatted
 as plain text with each line wrapped at 72 characters.
+
 * If you are asked to change something, use 'git commit --amend'.
 
 See Tim Pope's [excellent blog post] (http://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html)
@@ -52,7 +60,7 @@ Maintainers may commit changes to non-source documentation directly to the proje
 but should otherwise not commit their own contributions.
 
 ### Copyrights and Licenses
-All AUTHORS share in collective ownership of the code, ther is no Copyright
+All AUTHORS share in collective ownership of the code, there is no Copyright
 Assignment process.
 
 ZeroMQ and it's C4 process strongly favor the GPLv3, however this library exists
