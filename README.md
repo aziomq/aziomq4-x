@@ -13,7 +13,7 @@ epoll reactor.
 ## Building and installation
 
 Building requires a recent version of CMake (2.8 or later), and a C++ compiler
-which supports '--std=c++11'.  Currently this has been tested with - 
+which supports '--std=c++11'.  Currently this has been tested with -
 * OSX10.9 Mavericks XCode5.1
 * Arch Linux GCC4.8
 

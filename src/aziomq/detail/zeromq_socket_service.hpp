@@ -219,8 +219,8 @@ namespace detail {
         }
 
         endpoint_type endpoint(const implementation_type & impl) const {
-            return impl.endpoint_.empty() ? endpoint_type() 
-                                          : *impl.endpoint_.begin(); 
+            return impl.endpoint_.empty() ? endpoint_type()
+                                          : *impl.endpoint_.begin();
         }
 
         boost::system::error_code bind(implementation_type & impl,

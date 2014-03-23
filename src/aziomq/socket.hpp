@@ -167,7 +167,8 @@ namespace aziomq {
         /** \brief return endpoint addr supplied to bind or connect
          *  \returns boost::optional<std::string>
          *  \remarks Return value will be empty if bind or connect has
-         *  not yet been called/succeeded.
+         *  not yet been called/succeeded.  If multiple calls to connect
+         *  or bind have occured, this call wil return only the first
          */
         endpoint_type endpoint() const {
             auto res = get_service().endpoint(implementation);
@@ -207,7 +208,7 @@ namespace aziomq {
         template<typename Option>
         boost::system::error_code get_option(Option & opt,
                                              boost::system::error_code & ec) {
-            return get_service().get_option(opt, ec);
+            return get_service().get_option(implementation, opt, ec);
         }
 
         /** \brief Get an option from a socket
