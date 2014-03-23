@@ -175,7 +175,7 @@ namespace detail {
             if (ctx_ == nullptr) {
                 ec = make_error_code(EINVAL);
             } else {
-                auto rc = zmq_ctx_set(ctx_, option.name(), option.data());
+                auto rc = zmq_ctx_set(ctx_.get(), option.name(), option.value);
                 if (!rc)
                     ec = make_error_code();
             }

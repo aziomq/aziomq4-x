@@ -51,7 +51,7 @@ namespace io_service {
     template<typename Option>
     void set_option(boost::asio::io_service & io_service, const Option & option) {
         boost::system::error_code ec;
-        if (set_option(io_service, option))
+        if (set_option(io_service, option, ec))
             throw boost::system::system_error(ec);
     }
 

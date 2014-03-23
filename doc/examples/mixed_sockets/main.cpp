@@ -28,6 +28,9 @@ size_t translate(const char* exch_buf, char* res_buf, size_t packet_size) {
 int main(int argc, char **argv) {
     asio::io_service ios;
 
+    // to change context options you must do so before any sockets are created
+    aziomq::io_service::set_option(ios, aziomq::io_service::io_threads(2));
+
     // receive exchange traffic on udp multicast
     asio::ip::udp::socket exchange(ios);
     asio::ip::udp::endpoint group;
@@ -52,6 +55,8 @@ int main(int argc, char **argv) {
     // run until sigterm or sigint
     asio::signal_set signals(ios, SIGINT, SIGTERM);
     signals.async_wait([&](const boost::system::error_code &, int) { ios.stop(); });
+    // spawn threads to handle inproc messaging
+    // ...
     ios.run();
     return 0;
 }
