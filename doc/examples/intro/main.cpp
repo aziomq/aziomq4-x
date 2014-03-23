@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     std::array<char, 256> buf;
     for (;;) {
         auto size = subscriber.receive(asio::buffer(buf));
-        publisher.send(asio::buffer( const_cast<const char*>(buf.data()), size));
+        publisher.send(asio::buffer(const_cast<const char*>(buf.data()), size));
     }
     return 0;
 }
