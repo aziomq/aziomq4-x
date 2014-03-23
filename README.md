@@ -6,9 +6,10 @@ The aziomq library provides Boost Asio style bindings for ZeroMq 4.x
 This library is built on top of ZeroMQ's standard C interface.
 
 The main abstraction exposed by the library is aziomq::socket which
-provides an abstraction over the underlying zeromq socket that
-interfaces with Asio's io_service() and participates in the io_service's
-epoll reactor.
+provides an Asio style socket interface to the underlying zeromq socket
+and interfaces with Asio's io_service().  The socket implementation
+participates in the io_service's epoll reactor for asynchronous IO and
+may be freely mixed with other Asio socket types (raw TCP/UDP/Serial/etc.).
 
 ## Building and installation
 
