@@ -240,8 +240,8 @@ namespace aziomq {
          *
          * \remark
          * If flags does not have ZMQ_RCVMORE set, this call will synchronously
-         * receive a message for each buffer in the supplied sequence as part of a
-         * multipar message before returning.
+         * receive a message for each buffer in the supplied sequence
+         * before returning.
          */
         template<typename MutableBufferSequence>
         std::size_t receive(const MutableBufferSequence & buffers,
@@ -267,8 +267,8 @@ namespace aziomq {
          *
          * \remark
          * If flags does not have ZMQ_RCVMORE set, this call will synchronously
-         * receive a message for each buffer in the supplied sequence before
-         * returning.
+         * receive a message for each buffer in the supplied sequence
+         * before returning.
          */
         template<typename MutableBufferSequence>
         std::size_t receive(const MutableBufferSequence & buffers,
@@ -292,7 +292,7 @@ namespace aziomq {
          *
          * \remark
          * If flags does not have ZMQ_RCVMORE set, this call will synchronously
-         * receive a message for each buffer in the supplied sequence before
+         * send a message for each buffer in the supplied sequence before
          * returning.
          */
         template<typename ConstBufferSequence>
@@ -314,7 +314,7 @@ namespace aziomq {
          *
          * \remark
          * If flags does not have ZMQ_RCVMORE set, this call will synchronously
-         * receive a message for each buffer in the supplied sequence before
+         * send a message for each buffer in the supplied sequence before
          * returning.
          */
         template<typename ConstBufferSequence>
