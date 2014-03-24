@@ -78,5 +78,5 @@ Further examples may be found in doc/examples
 ## Copying
 
 Use of this software is granted under the the BOOST 1.0 license
-(same Boost Asio).  For details see the file `LICENSE-BOOST_1_0
+(same as Boost Asio).  For details see the file `LICENSE-BOOST_1_0
 included with the distribution.
