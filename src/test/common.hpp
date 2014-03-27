@@ -1,4 +1,5 @@
 /*
+ *
     Copyright (c) 2013-2014 Contributors as noted in the AUTHORS file
 
     This file is part of aziomq
@@ -8,6 +9,10 @@
 */
 #ifndef __AZIOMQ_TEST_COMMON_HPP__
 #define __AZIOMQ_TEST_COMMON_HPP__
+#include <aziomq/socket.hpp>
+#include <boost/asio.hpp>
+
+#include <thread>
 namespace detail {
     struct apply_concept {
         virtual ~apply_concept() { }
