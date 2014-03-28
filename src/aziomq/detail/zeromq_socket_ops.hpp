@@ -32,6 +32,8 @@ namespace socket_ops {
     using shutdown_type = boost::asio::socket_base::shutdown_type;
     using native_handle_type = boost::asio::detail::socket_type; // underlying FD
     using endpoint_type = std::string;
+    using more_result = std::pair<std::size_t, bool>;
+    using expected_more = expected<more_result>;
 
     struct send_more_t : std::integral_constant<int, ZMQ_SNDMORE> { };
     struct receive_more_t : std::integral_constant<int, ZMQ_RCVMORE> { };
@@ -246,27 +248,24 @@ namespace socket_ops {
     }
 
     template<typename MutableBufferSequence>
-    expected_size receive(message & msg,
+    expected_more receive(message & msg,
                           socket_type socket,
                           const MutableBufferSequence & buffers,
                           int flags,
                           receive_more_t) {
-        flags &= ~receive_more_t::value;
         size_t bytes_transferred = 0;
-        for (auto it = std::begin(buffers); it != std::end(buffers); ++it) {
-            auto rc = receive(msg, socket, *it, flags);
-            if (!rc.valid())
-                return rc;
-            bytes_transferred += rc.get();
-            if (!msg.more())
-                break;
+        try {
+            flags &= ~receive_more_t::value;
+            for (auto it = std::begin(buffers); it != std::end(buffers); ++it) {
+                auto rc = receive(msg, socket, *it, flags);
+                bytes_transferred += rc.get();
+                if (!msg.more())
+                    break;
+            }
+        } catch (...) {
+            return expected_more::from_exception();
         }
-
-        if (msg.more()) {
-            auto ec = make_error_code(boost::system::errc::no_buffer_space);
-            return expected_size::from_exception(boost::system::system_error(ec));
-        }
-        return bytes_transferred;
+        return std::make_pair(bytes_transferred, msg.more());
     }
 
     template<typename MutableBufferSequence>

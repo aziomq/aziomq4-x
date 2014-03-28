@@ -47,6 +47,7 @@ namespace aziomq {
         using native_handle_type = service_type::native_handle_type;
         using endpoint_type = boost::optional<std::string>;
         using message_flags = int;
+        using more_result = service_type::more_result;
 
         // socket options
         using type = opt::type;
@@ -280,6 +281,47 @@ namespace aziomq {
             return res;
         }
 
+        /** \brief Receive some data as part of a multipart message from the socket
+         *  \tparam MutableBufferSequence
+         *  \param buffers buffer(s) to fill on receive
+         *  \param flags specifying how the receive call is to be made
+         *  \param ec set to indicate what error, if any, occurred
+         *  \return pair<size_t, bool>
+         *  \remark
+         *  Works as for receive() with flags containing ZMQ_RCV_MORE but returns
+         *  a pair containing the number of bytes transferred and a boolean flag
+         *  which if true, indicates more message parts are available on the
+         *  socket.
+         */
+        template<typename MutableBufferSequence>
+        more_result receive_more(const MutableBufferSequence & buffers,
+                                 message_flags flags,
+                                 boost::system::error_code & ec) {
+            return get_service().receive_more(implementation, buffers, flags, ec);
+        }
+
+        /** \brief Receive some data as part of a multipart message from the socket
+         *  \tparam MutableBufferSequence
+         *  \param buffers buffer(s) to fill on receive
+         *  \param flags specifying how the receive call is to be made
+         *  \return pair<size_t, bool>
+         *  \throw boost::system::system_error
+         *  \remark
+         *  Works as for receive() with flags containing ZMQ_RCV_MORE but returns
+         *  a pair containing the number of bytes transferred and a boolean flag
+         *  which if true, indicates more message parts are available on the
+         *  socket.
+         */
+        template<typename MutableBufferSequence>
+        more_result receive_more(const MutableBufferSequence & buffers,
+                                 message_flags flags = 0) {
+            boost::system::error_code ec;
+            auto res = receive_more(buffers, flags, ec);
+            if (ec)
+                throw boost::system::system_error(ec);
+            return res;
+        }
+
         /** \brief Send some data from the socket
          *  \tparam ConstBufferSequence
          *  \param buffers buffer(s) to send
@@ -359,6 +401,34 @@ namespace aziomq {
                            message_flags flags = 0) {
             get_service().async_receive(implementation, buffers,
                                             std::move(handler), flags);
+        }
+
+        /** \brief Initiate an async receive operation.
+         *  \tparam MutableBufferSequence
+         *  \tparam ReadMoreHandler must conform to the ReadMoreHandler concept
+         *  \param buffers buffer(s) to fill on receive
+         *  \param handler ReadMoreHandler
+         *  \remark
+         *  The ReadMoreHandler concept has the following interface
+         *      struct ReadMoreHandler {
+         *          void operator()(const boost::system::error_code & ec,
+         *                          more_result result);
+         *      }
+         *  \remark
+         *  Works as for async_receive() with flags containing ZMQ_RCV_MORE but
+         *  does not error if more parts remain than buffers supplied.  The
+         *  completion handler will be called with a more_result indicating the
+         *  number of bytes transferred thus far, and flag indicating whether
+         *  more message parts remain. The handler may then make syncrhonous
+         *  receive_more() calls to collect the remaining message parts.
+         */
+        template<typename MutableBufferSequence,
+                 typename ReadMoreHandler>
+        void async_receive_more(const MutableBufferSequence & buffers,
+                                ReadMoreHandler handler,
+                                message_flags flags = 0) {
+            get_service().async_receive_more(implementation, buffers,
+                                             std::move(handler), flags);
         }
 
         /** \brief Initiate an async send operation
