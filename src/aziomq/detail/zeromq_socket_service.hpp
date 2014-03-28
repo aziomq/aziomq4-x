@@ -40,6 +40,7 @@ namespace detail {
         using reactor = boost::asio::detail::reactor;
         using endpoint_type = socket_ops::endpoint_type;
         using mutex_type  = std::mutex;
+        using more_result = socket_ops::more_result;
 
         static boost::asio::io_service::id id;
 
@@ -303,7 +304,10 @@ namespace detail {
                 if (flags & ZMQ_RCVMORE) {
                     auto rc = socket_ops::receive(msg, impl.socket_, buffers, flags,
                                                     socket_ops::receive_more_t());
-                    bytes_transferred = rc.get();
+                    auto mr = rc.get();
+                    bytes_transferred = mr.first;
+                    if (mr.second)
+                        ec = make_error_code(boost::system::errc::no_buffer_space);
                 } else {
                     auto rc = socket_ops::receive(msg, impl.socket_, buffers, flags);
                     bytes_transferred = rc.get();
@@ -312,6 +316,23 @@ namespace detail {
                 ec = e.code();
             }
             return bytes_transferred;
+        }
+
+        template<typename MutableBufferSequence>
+        more_result receive_more(implementation_type & impl,
+                                 const MutableBufferSequence & buffers,
+                                 int flags,
+                                 boost::system::error_code & ec) {
+            more_result res = std::make_pair(0, false);
+            try {
+                message msg;
+                auto rc = socket_ops::receive(msg, impl.socket_, buffers, flags,
+                                                socket_ops::receive_more_t());
+                res = rc.get();
+            } catch (const::boost::system::system_error & e) {
+                ec = e.code();
+            }
+            return res;
         }
 
         template<typename MutableBufferSequence,
@@ -323,6 +344,24 @@ namespace detail {
             bool is_continuation = boost_asio_handler_cont_helpers::is_continuation(handler);
 
             typedef zeromq_receive_op<MutableBufferSequence, Handler> op;
+            typename op::ptr p = { boost::asio::detail::addressof(handler),
+                boost_asio_handler_alloc_helpers::allocate(sizeof(op), handler), 0 };
+            p.p = new (p.v) op(impl.socket_, buffers, handler, flags);
+
+            start_op(impl, boost::asio::detail::reactor::read_op, p.p,
+                        is_continuation, true);
+            p.v = p.p = 0;
+        }
+
+        template<typename MutableBufferSequence,
+                 typename Handler>
+        void async_receive_more(implementation_type & impl,
+                                const MutableBufferSequence & buffers,
+                                Handler handler,
+                                int flags) {
+            bool is_continuation = boost_asio_handler_cont_helpers::is_continuation(handler);
+
+            typedef zeromq_receive_more_op<MutableBufferSequence, Handler> op;
             typename op::ptr p = { boost::asio::detail::addressof(handler),
                 boost_asio_handler_alloc_helpers::allocate(sizeof(op), handler), 0 };
             p.p = new (p.v) op(impl.socket_, buffers, handler, flags);

@@ -119,6 +119,28 @@ namespace detail {
             std::rethrow_exception(e);
     }
 
+    void freceive_more_sync(boost::asio::io_service &, aziomq::socket & socket,
+                            const const_buf_vec & expected_bufs, int flags) {
+        SYNC_LOG(__PRETTY_FUNCTION__);
+        // create vector of raw bufs to fill from length of expected_bufs
+        buf_vec_t buf_vec(std::distance(std::begin(expected_bufs),
+                                        std::end(expected_bufs)));
+        zero(buf_vec);
+
+        // create azio buffer vector
+        mutable_buf_vec bufs;
+        init(bufs, buf_vec);
+
+        aziomq::socket::more_result mr = std::make_pair(0, true);
+        for (auto it = std::begin(bufs), e = std::end(bufs); mr.second && it != e; ++it) {
+            mr = socket.receive_more(boost::asio::buffer(*it), flags);
+        }
+
+        auto e = check_res(bufs, expected_bufs);
+        if (e != std::exception_ptr())
+            std::rethrow_exception(e);
+    }
+
     void freceive_async(boost::asio::io_service & ios, aziomq::socket & socket,
                             const const_buf_vec & expected_bufs, int flags) {
         SYNC_LOG(__PRETTY_FUNCTION__);
@@ -138,6 +160,40 @@ namespace detail {
                         err = std::make_exception_ptr(boost::system::system_error(ec));
                     } else {
                         err = check_res(bufs, expected_bufs);
+                    }
+                    ios.stop();
+                });
+        ios.run();
+        if (err != std::exception_ptr())
+            std::rethrow_exception(err);
+    }
+
+    void freceive_more_async(boost::asio::io_service & ios, aziomq::socket & socket,
+                             const const_buf_vec & expected_bufs, int flags) {
+        SYNC_LOG(__PRETTY_FUNCTION__);
+         //create vector of raw bufs to fill from length of expected_bufs
+        buf_vec_t buf_vec(std::distance(std::begin(expected_bufs),
+                                        std::end(expected_bufs)));
+        zero(buf_vec);
+
+         //create azio buffer vector
+        mutable_buf_vec bufs;
+        init(bufs, buf_vec);
+
+        auto it = std::begin(bufs);
+        auto e = std::end(bufs);
+
+        std::exception_ptr err;
+        socket.async_receive_more(boost::asio::buffer(*it++),
+                [&ios, &socket, &bufs, &it, e, &err, expected_bufs](const boost::system::error_code & ec,
+                                                                   aziomq::socket::more_result mr) {
+                    if (ec) {
+                        err = std::make_exception_ptr(boost::system::system_error(ec));
+                    } else {
+                        for (; mr.second && it != e; ++it) {
+                            mr = socket.receive_more(boost::asio::buffer(*it));
+                            err = check_res(bufs, expected_bufs);
+                        }
                     }
                     ios.stop();
                 });
@@ -174,10 +230,13 @@ void apply(std::string msg = "This is a test", int msg_ct = 20) {
     SYNC_LOG("Testing Multi-Part Message send/receive");
     SYNC_LOG(" - Testing synchronous send/receive");
     apply_test(freceive_sync, fsend_sync, bufs, ZMQ_SNDMORE, ZMQ_RCVMORE);
+    SYNC_LOG(" - Testing synchronous send/receive_more");
+    apply_test(freceive_more_sync, fsend_sync, bufs, ZMQ_SNDMORE, ZMQ_RCVMORE);
 
     SYNC_LOG(" - Testing aynchronous send/receive");
-    SYNC_LOG(" - Testing aynchronous send/receive");
     apply_test(detail::freceive_async, detail::fsend_async, bufs);
+    SYNC_LOG(" - Testing aynchronous send/receive_more");
+    apply_test(detail::freceive_more_async, detail::fsend_async, bufs);
 }
 
 } // namespace multi_message_tests
