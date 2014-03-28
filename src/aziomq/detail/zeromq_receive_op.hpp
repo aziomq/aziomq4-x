@@ -167,7 +167,7 @@ public:
         BOOST_ASIO_HANDLER_COMPLETION((o));
 
         auto mr = std::make_pair(o->bytes_transferred_, o->more());
-        boost::asio::detail::binder2<Handler, boost::system::error_code, size_t>
+        boost::asio::detail::binder2<Handler, boost::system::error_code, socket_ops::more_result>
             handler(o->handler_, o->ec_, mr);
         p.h = boost::asio::detail::addressof(handler.handler_);
         p.reset();
