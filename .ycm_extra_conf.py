@@ -36,7 +36,17 @@ platform_flags = [
 '-isystem',
 '/usr/include',
 '-isystem',
-'/usr/local/include'
+'/usr/local/include',
+'-isystem',
+ '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../lib/c++/v1',
+'-isystem',
+ '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../lib/clang/5.1/include',
+'-isystem',
+ '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include',
+'-isystem',
+ '/System/Library/Frameworks',
+'-isystem',
+ '/Library/Frameworks'
 ]
 
 # These are the compilation flags that will be used in case there's no

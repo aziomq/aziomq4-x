@@ -42,8 +42,6 @@ public:
 
     static bool do_perform_send_more(boost::asio::detail::reactor_op* base) {
         auto o = static_cast<zeromq_send_op_base*>(base);
-        AZIOMQ_TRACKED_OP_LOG(*o, "do_perform(more)");
-
         o->ec_ = boost::system::error_code();
         try {
             auto rc = socket_ops::send(o->msg_, o->socket_, o->buffers_, o->flags_,
@@ -57,8 +55,6 @@ public:
 
     static bool do_perform(boost::asio::detail::reactor_op* base) {
         auto o = static_cast<zeromq_send_op_base*>(base);
-        AZIOMQ_TRACKED_OP_LOG(*o, "do_perform");
-
         o->ec_ = boost::system::error_code();
         try {
             auto rc = socket_ops::send(o->msg_, o->socket_, o->buffers_, o->flags_,

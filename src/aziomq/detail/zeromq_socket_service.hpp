@@ -118,8 +118,6 @@ namespace detail {
             if (int err = reactor_.register_descriptor(native_handle(impl), impl.reactor_data_))
                 return ec = make_error_code(err);
             guard.dismiss();
-            AZIOMQ_TRACKED_LOG("opening socket " << std::hex << native_handle(impl));
-
             return ec;
         }
 
