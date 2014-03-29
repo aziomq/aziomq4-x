@@ -98,15 +98,8 @@ namespace aziomq { namespace detail {
         }
     };
 
-    boost::asio::const_buffers_1 buffer(const message & msg) {
-        BOOST_ASSERT_MSG(msg.data() != nullptr, "Invalid message");
-
-        return boost::asio::buffer(msg.data(), msg.size());
-    }
-
     boost::asio::mutable_buffers_1 buffer(message & msg) {
         BOOST_ASSERT_MSG(msg.data() != nullptr, "Invalid message");
-
         return boost::asio::buffer(msg.data(), msg.size());
     }
 } }
