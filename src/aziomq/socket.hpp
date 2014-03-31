@@ -48,7 +48,7 @@ namespace aziomq {
         using endpoint_type = boost::optional<std::string>;
         using message_flags = int;
         using more_result = service_type::more_result;
-
+        using proxy_type = service_type::proxy_type;
         // socket options
         using type = opt::type;
         using rcv_more = opt::rcv_more;
@@ -471,6 +471,38 @@ namespace aziomq {
          */
         native_handle_type native_handle() const {
             return get_service().native_handle(implementation);
+        }
+
+        /** \brief Create a proxy connection between two sockets
+         *  \param frontend socket
+         *  \param backened socket
+         *  \return shared_ptr of an implementation defined proxy handle
+         *  \remark
+         *  Works like zmq_proxy API but is non blocking, the proxy runs
+         *  as long as the returned proxy handle is not destroyed.
+         */
+        static proxy_type proxy(socket & frontend, socket & backend) {
+            BOOST_ASSERT_MSG(&frontend.get_service() == &backend.get_service(),
+                    "Sockets must belong to the same io_service");
+            return frontend.get_service().register_proxy(frontend.implementation, 
+                                                         backend.implementation);
+        }
+
+        /** \brief Create a proxy connection between two sockets
+         *  \param frontend socket
+         *  \param backened socket
+         *  \param capture socket
+         *  \return shared_ptr of an implementation defined proxy handle
+         *  \remark
+         *  Works like zmq_proxy API but is non blocking, the proxy runs
+         *  as long as the returned proxy handle is not destroyed.
+         */
+        static proxy_type proxy(socket & frontend, socket & backend, socket & capture) {
+            BOOST_ASSERT_MSG(&frontend.get_service() == &backend.get_service(),
+                    "Sockets must belong to the same io_service");
+            return frontend.get_service().register_proxy(frontend.implementation,
+                                                         backend.implementation,
+                                                         capture.implementation);
         }
     };
 }
