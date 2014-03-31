@@ -13,6 +13,7 @@
 #include "scope_guard.hpp"
 #include "zeromq_send_op.hpp"
 #include "zeromq_receive_op.hpp"
+#include "zeromq_proxy_op.hpp"
 
 #include <boost/assert.hpp>
 #include <boost/asio/io_service.hpp>
@@ -208,7 +209,7 @@ namespace detail {
             return socket_ops::get_option(impl.socket_, option, ec);
         }
 
-        native_handle_type native_handle(const implementation_type & impl) const {
+        static native_handle_type native_handle(const implementation_type & impl) {
             native_handle_type res;
             boost::system::error_code ec;
             ec = socket_ops::native_handle(impl.socket_, res, ec);
@@ -371,6 +372,73 @@ namespace detail {
 
         static mutex_type & static_mutex();
 
+        struct proxy {
+            reactor & reactor_;
+            implementation_type & frontend_;
+            implementation_type & backend_;
+            socket_type capture_;
+            std::mutex mtx_;
+            std::function<void(const boost::system::error_code &)> on_last_error;
+
+            proxy(reactor & reactor,
+                  implementation_type & frontend,
+                  implementation_type & backend) :
+                reactor_(reactor),
+                frontend_(frontend),
+                backend_(backend),
+                capture_(nullptr) { }
+
+            proxy(reactor & reactor,
+                  implementation_type & frontend,
+                  implementation_type & backend,
+                  implementation_type & capture) :
+                reactor_(reactor),
+                frontend_(frontend),
+                backend_(backend),
+                capture_(capture.socket_) { }
+
+            template<typename Handler>
+            void start_op(implementation_type & frontend, implementation_type & backend, Handler handler) {
+                bool is_continuation = boost_asio_handler_cont_helpers::is_continuation(handler);
+                typedef zeromq_proxy_op<Handler> op;
+                typename op::ptr p = { boost::asio::detail::addressof(handler),
+                    boost_asio_handler_alloc_helpers::allocate(sizeof(op), handler), 0};
+                p.p = new (p.v) op(frontend.socket_, backend.socket_, capture_, mtx_, std::move(handler));
+                reactor_.start_op(boost::asio::detail::reactor::read_op, native_handle(frontend),
+                        frontend.reactor_data_, p.p, is_continuation, true);
+                p.v = p.p = 0;
+            }
+
+            template<typename Handler>
+            void start_frontend_op(Handler handler) {
+                start_op(frontend_, backend_, std::move(handler));
+            }
+
+            template<typename Handler>
+            void start_backend_op(Handler handler) {
+                start_op(backend_, frontend_, std::move(handler));
+            }
+        };
+        using proxy_type = std::shared_ptr<proxy>;
+        using proxy_ptr = std::weak_ptr<proxy>;
+
+        proxy_type register_proxy(implementation_type & frontend,
+                                  implementation_type & backend) {
+            auto res = std::make_shared<proxy>(reactor_, frontend, backend);
+            start_frontend_op(res);
+            start_backend_op(res);
+            return res;
+        }
+
+        proxy_type register_proxy(implementation_type & frontend,
+                                  implementation_type & backend,
+                                  implementation_type & capture) {
+            auto res = std::make_shared<proxy>(reactor_, frontend, backend, capture);
+            start_frontend_op(res);
+            start_backend_op(res);
+            return res;
+        }
+
     private:
         static boost::system::error_code check_endpoint(const implementation_type & impl,
                                                         boost::system::error_code & ec) {
@@ -378,6 +446,33 @@ namespace detail {
                                             make_error_code(boost::system::errc::already_connected);
         }
 
+        static void on_last_error(proxy_ptr proxy,
+                                  const boost::system::error_code & ec) {
+            if (auto p = proxy.lock()) {
+                if (p->on_last_error)
+                    p->on_last_error(ec);
+            }
+        }
+
+        static void start_frontend_op(proxy_ptr proxy) {
+            if (auto p = proxy.lock()) {
+                p->start_frontend_op([proxy](const boost::system::error_code & ec, size_t) {
+                    if (ec)
+                        return on_last_error(proxy, ec);
+                    start_frontend_op(proxy);
+                });
+            }
+        }
+
+        static void start_backend_op(proxy_ptr proxy) {
+            if (auto p = proxy.lock()) {
+                p->start_backend_op([proxy](const boost::system::error_code & ec, size_t) {
+                    if (ec)
+                        return on_last_error(proxy, ec);
+                    start_backend_op(proxy);
+                });
+            }
+        }
         // retrieve shared context pointer
         static context_pointer_type get_context();
 
