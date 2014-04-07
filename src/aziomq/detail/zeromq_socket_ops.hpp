@@ -10,7 +10,7 @@
 #define AZIOMQ_SOCKET_OPS_HPP_
 
 #include "../error.hpp"
-#include "expected.hpp"
+#include "../util/expected.hpp"
 #include "reactor_op.hpp"
 #include "tracked_op.hpp"
 

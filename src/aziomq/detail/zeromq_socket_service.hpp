@@ -10,7 +10,7 @@
 #define AZIOMQ_ZEROMQ_SOCKET_SERVICE_HPP_
 
 #include "../error.hpp"
-#include "scope_guard.hpp"
+#include "../util/scope_guard.hpp"
 #include "zeromq_send_op.hpp"
 #include "zeromq_receive_op.hpp"
 #include "zeromq_proxy_op.hpp"

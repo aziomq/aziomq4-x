@@ -10,7 +10,7 @@
 #define AZIOMQ_ZEROMQ_MESSAGE_HPP_
 
 #include "../error.hpp"
-#include "expected.hpp"
+#include "../util/expected.hpp"
 
 #include <boost/system/error_code.hpp>
 #include <boost/system/system_error.hpp>

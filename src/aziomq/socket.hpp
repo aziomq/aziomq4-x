@@ -12,7 +12,7 @@
 #include "error.hpp"
 #include "io_service.hpp"
 #include "option.hpp"
-#include "detail/expected.hpp"
+#include "util/expected.hpp"
 #include "detail/zeromq_message.hpp"
 #include "detail/zeromq_socket_service.hpp"
 
@@ -484,7 +484,7 @@ namespace aziomq {
         static proxy_type proxy(socket & frontend, socket & backend) {
             BOOST_ASSERT_MSG(&frontend.get_service() == &backend.get_service(),
                     "Sockets must belong to the same io_service");
-            return frontend.get_service().register_proxy(frontend.implementation, 
+            return frontend.get_service().register_proxy(frontend.implementation,
                                                          backend.implementation);
         }
 
