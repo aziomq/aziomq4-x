@@ -10,7 +10,7 @@
 #define AZIOMQ_SOCKET_OPS_HPP_
 
 #include "../error.hpp"
-#include "expected.hpp"
+#include "../util/expected.hpp"
 #include "reactor_op.hpp"
 #include "tracked_op.hpp"
 
@@ -86,6 +86,7 @@ namespace socket_ops {
                                    const endpoint_type & endpoint,
                                    boost::system::error_code & ec) {
         BOOST_ASSERT_MSG(socket, "Invalid socket");
+
         auto rc = zmq_bind(socket, endpoint.c_str());
         if (rc)
             ec = make_error_code();
@@ -108,6 +109,7 @@ namespace socket_ops {
                           message::flags_t flags) {
         BOOST_ASSERT_MSG(socket != nullptr, "Invalid socket");
         BOOST_ASSERT_MSG(msg != nullptr, "Invalid message");
+
         auto rc = zmq_msg_recv(msg, socket, flags);
         if (rc < 0)
             return expected_size::from_exception(boost::system::system_error(make_error_code()));
@@ -120,6 +122,7 @@ namespace socket_ops {
                           dont_wait_t) {
         BOOST_ASSERT_MSG(socket != nullptr, "Invalid socket");
         BOOST_ASSERT_MSG(msg != nullptr, "Invalid message");
+
         auto rc = zmq_msg_recv(msg, socket, flags);
         if (rc == EAGAIN)
             return 0;
@@ -133,6 +136,7 @@ namespace socket_ops {
                        message::flags_t flags) {
         BOOST_ASSERT_MSG(socket != nullptr, "Invalid socket");
         BOOST_ASSERT_MSG(msg != nullptr, "Invalid message");
+
         auto rc = zmq_msg_send(msg, socket, flags);
         if (rc < 0)
             return expected_size::from_exception(boost::system::system_error(make_error_code()));
@@ -145,6 +149,7 @@ namespace socket_ops {
                        dont_wait_t) {
         BOOST_ASSERT_MSG(socket != nullptr, "Invalid socket");
         BOOST_ASSERT_MSG(msg != nullptr, "Invalid message");
+
         auto sz = msg->size();
         auto rc = zmq_msg_send(msg, socket, flags | dont_wait_t::value);
         if (rc == EAGAIN)

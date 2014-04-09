@@ -38,9 +38,11 @@ int main(int argc, char **argv) {
     resp_type resp;
     for(;;) {
         std::array<char, 4096> buf;
-        auto mr = request.receive_more(asio::buffer(buf));
-        if (mr.second) {
-            headers.emplace_back(std::string(buf.data(), mr.first));
+        size_t bytes_transferred;
+        bool more;
+        std::tie(bytes_transferred, more) = request.receive_more(asio::buffer(buf));
+        if (more) {
+            headers.emplace_back(std::string(buf.data(), bytes_transferred));
         } else {
             resp = *reinterpret_cast<resp_type*>(buf.data());
             break;

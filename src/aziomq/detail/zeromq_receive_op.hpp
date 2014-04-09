@@ -45,15 +45,11 @@ public:
 
     static bool do_perform_receive_more(boost::asio::detail::reactor_op* base) {
         auto o = static_cast<zeromq_receive_op_base*>(base);
-        AZIOMQ_TRACKED_OP_LOG(*o, "do_perform(more)");
-
         o->ec_ = boost::system::error_code();
         try {
             auto rc = socket_ops::receive(o->msg_, o->socket_, o->buffers_,
-                                            o->flags_, socket_ops::receive_more_t());
-            auto mr = rc.get();
-            o->bytes_transferred_ = mr.first;
-            o->more_ = mr.second;
+                                          o->flags_, socket_ops::receive_more_t());
+            std::tie(o->bytes_transferred_, o->more_) = rc.get();
         } catch (const boost::system::system_error & e) {
             o->ec_ = e.code();
         }
@@ -62,8 +58,6 @@ public:
 
     static bool do_perform(boost::asio::detail::reactor_op* base) {
         auto o = static_cast<zeromq_receive_op_base*>(base);
-        AZIOMQ_TRACKED_OP_LOG(*o, "do_perform");
-
         o->ec_ = boost::system::error_code();
         try {
             auto rc = socket_ops::receive(o->msg_, o->socket_, o->buffers_,
@@ -166,9 +160,8 @@ public:
 
         BOOST_ASIO_HANDLER_COMPLETION((o));
 
-        auto mr = std::make_pair(o->bytes_transferred_, o->more());
         boost::asio::detail::binder2<Handler, boost::system::error_code, socket_ops::more_result>
-            handler(o->handler_, o->ec_, mr);
+            handler(o->handler_, o->ec_, std::make_pair(o->bytes_transferred_, o->more()));
         p.h = boost::asio::detail::addressof(handler.handler_);
         p.reset();
 

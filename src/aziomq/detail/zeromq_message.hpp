@@ -10,7 +10,7 @@
 #define AZIOMQ_ZEROMQ_MESSAGE_HPP_
 
 #include "../error.hpp"
-#include "expected.hpp"
+#include "../util/expected.hpp"
 
 #include <boost/system/error_code.hpp>
 #include <boost/system/system_error.hpp>
@@ -97,11 +97,6 @@ namespace aziomq { namespace detail {
                 throw boost::system::system_error(make_error_code());
         }
     };
-
-    boost::asio::const_buffers_1 buffer(const message & msg) {
-        BOOST_ASSERT_MSG(msg.data() != nullptr, "Invalid message");
-        return boost::asio::buffer(msg.data(), msg.size());
-    }
 
     boost::asio::mutable_buffers_1 buffer(message & msg) {
         BOOST_ASSERT_MSG(msg.data() != nullptr, "Invalid message");
