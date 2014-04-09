@@ -20,7 +20,7 @@
 #include <stdexcept>
 #include <cassert>
 
-namespace aziomq { namespace detail {
+namespace aziomq { namespace util {
 // define AZIOMQ_LOG_UNCHECKED *BEFORE* including expected.hpp to forward declare the following
 // function to be called any time an exception is present and unchecked in an expected<T>
 // when it's destructor is called
@@ -138,6 +138,6 @@ public:
         return false;
     }
 };
-} // namespace detail
+} // namespace util
 } // namespace aziomq
 #endif // AZIOMQ_EXPECTED_HPP_

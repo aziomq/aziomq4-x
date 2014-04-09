@@ -15,7 +15,7 @@
 #include <utility>
 
 namespace aziomq {
-namespace detail {
+namespace util {
 template<class F>
 class scope_guard_t {
     F func_;
@@ -48,7 +48,7 @@ template<class F>
 scope_guard_t<F> operator+(scope_guard_on_exit, F && func) {
     return scope_guard<F>(std::forward<F>(func));
 }
-} // namespace detail
+} // namespace util
 } // namespace aziomq
 
 #define CONCATENATE_IMPL(s1, s2) s1##s2

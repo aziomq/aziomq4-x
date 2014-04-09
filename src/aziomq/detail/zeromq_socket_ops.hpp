@@ -28,12 +28,12 @@ namespace aziomq { namespace detail {
 
 namespace socket_ops {
     using socket_type = reactor_op::socket_type;
-    using expected_size = expected<std::size_t>;
+    using expected_size = util::expected<std::size_t>;
     using shutdown_type = boost::asio::socket_base::shutdown_type;
     using native_handle_type = boost::asio::detail::socket_type; // underlying FD
     using endpoint_type = std::string;
     using more_result = std::pair<std::size_t, bool>;
-    using expected_more = expected<more_result>;
+    using expected_more = util::expected<more_result>;
 
     struct send_more_t : std::integral_constant<int, ZMQ_SNDMORE> { };
     struct receive_more_t : std::integral_constant<int, ZMQ_RCVMORE> { };

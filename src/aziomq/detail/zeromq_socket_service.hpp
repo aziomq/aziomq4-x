@@ -115,7 +115,7 @@ namespace detail {
             impl.socket_ = zmq_socket(ctx_.get(), type);
             if (!impl.socket_)
                 return ec = make_error_code();
-            auto guard = scope_guard([&] { zmq_close(impl.socket_); });
+            auto guard = util::scope_guard([&] { zmq_close(impl.socket_); });
             if (int err = reactor_.register_descriptor(native_handle(impl), impl.reactor_data_))
                 return ec = make_error_code(err);
             guard.dismiss();
