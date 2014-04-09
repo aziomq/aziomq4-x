@@ -378,7 +378,6 @@ namespace detail {
             implementation_type & backend_;
             socket_type capture_;
             std::mutex mtx_;
-
             std::function<void(const boost::system::error_code &)> on_last_error;
 
             proxy(reactor & reactor,
