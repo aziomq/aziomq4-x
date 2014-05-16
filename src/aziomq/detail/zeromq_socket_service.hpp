@@ -45,10 +45,20 @@ namespace detail {
 
         static boost::asio::io_service::id id;
 
+        struct assoc_handler {
+            virtual ~assoc_handler() = default;
+
+            virtual void on_install() = 0;
+            virtual void on_event(boost::system::error_code const&, size_t) = 0;
+        };
+        using assoc_handler_ptr = std::shared_ptr<assoc_handler>;
+        using weak_assoc_handler_ptr = std::weak_ptr<assoc_handler>;
+
         struct implementation_type {
             socket_type socket_;
             int shutdown_;
             std::vector<endpoint_type> endpoint_;
+            assoc_handler_ptr assoc_handler_;
 
             reactor::per_descriptor_data reactor_data_;
         };
@@ -104,6 +114,12 @@ namespace detail {
                                         impl.reactor_data_, other.reactor_data_);
         }
 
+        template<typename T, typename... Args>
+        void associate_handler(implementation_type & impl, Args&&... args) {
+            impl.assoc_handler_ = std::make_shared<T>(std::forward<Args>(args)...);
+            impl.assoc_handler_->on_install();
+        }
+
         boost::system::error_code do_open(implementation_type & impl,
                                           int type,
                                           boost::system::error_code & ec) {
@@ -123,6 +139,7 @@ namespace detail {
         }
 
         void destroy(implementation_type & impl) const {
+            impl.assoc_handler_.reset();
             if (!is_open(impl)) return;
             reactor_.deregister_descriptor(native_handle(impl),
                     impl.reactor_data_, true);
@@ -253,6 +270,13 @@ namespace detail {
             return ec;
         }
 
+        boost::system::error_code monitor(implementation_type & impl,
+                                          const endpoint_type & addr,
+                                          int events,
+                                          boost::system::error_code & ec) {
+            return socket_ops::monitor(impl.socket_, addr,  events, ec);
+        }
+
         template<typename ConstBufferSequence>
         size_t send(implementation_type & impl,
                     const ConstBufferSequence & buffers,
@@ -380,13 +404,13 @@ namespace detail {
             std::mutex mtx_;
             std::function<void(const boost::system::error_code &)> on_last_error;
 
-            proxy(reactor & reactor,
+            proxy(reactor & r,
                   implementation_type & frontend,
-                  implementation_type & backend) :
-                reactor_(reactor),
-                frontend_(frontend),
-                backend_(backend),
-                capture_(nullptr) { }
+                  implementation_type & backend)
+                : reactor_(r)
+                , frontend_(frontend)
+                , backend_(backend)
+                , capture_(nullptr) { }
 
             proxy(reactor & reactor,
                   implementation_type & frontend,

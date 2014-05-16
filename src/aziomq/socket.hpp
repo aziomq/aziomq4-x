@@ -21,6 +21,7 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/system/error_code.hpp>
+#include <boost/format.hpp>
 
 namespace aziomq {
     /** \brief Implement an asio-like socket over a zeromq socket
@@ -49,6 +50,7 @@ namespace aziomq {
         using message_flags = int;
         using more_result = service_type::more_result;
         using proxy_type = service_type::proxy_type;
+
         // socket options
         using type = opt::type;
         using rcv_more = opt::rcv_more;
@@ -399,8 +401,7 @@ namespace aziomq {
         void async_receive(const MutableBufferSequence & buffers,
                            ReadHandler handler,
                            message_flags flags = 0) {
-            get_service().async_receive(implementation, buffers,
-                                            std::move(handler), flags);
+            get_service().async_receive(implementation, buffers, std::move(handler), flags);
         }
 
         /** \brief Initiate an async receive operation.
@@ -473,6 +474,66 @@ namespace aziomq {
             return get_service().native_handle(implementation);
         }
 
+        /** \brief monitor events on this socket
+         *  \tparam Handler handler function which conforms to the SocketMonitorHandler concept
+         *  \param ios io_service on which to bind the returned monitor socket
+         *  \param handler Handler conforming to the SocketMonitorHandler concept as follows
+         *     void SocketMonitorHandler(boost::system::error_code const& ec,
+         *                               zmq_event_t const& event,
+         *                               boost::asio::const_buffer const& addr);
+         *  \param events int mask of events to publish to returned socket
+         *  \param ec error_code to set on error
+         *  \returns socket
+         *  \remark
+         *  The returned socket will be constructed on the supplied ios as a ZMQ_PAIR socket
+         *  type bound on the inproc transport to this socket's monitor. The supplied handler will
+         *  be registered to receive events asynchronously on the returned socket as long
+         *  as the returned socket remains in scope.
+        **/
+        template<typename Handler>
+        socket monitor(boost::asio::io_service & ios,
+                       Handler handler,
+                       int events,
+                       boost::system::error_code & ec) {
+            socket res(ios, ZMQ_PAIR);
+            auto a = monitor_addr();
+            if (get_service().monitor(implementation, a, events, ec))
+                return res;
+
+            if (res.connect(a, ec))
+                return res;
+
+            res.associate_handler(std::move(handler), a);
+            return res;
+        }
+
+        /** \brief monitor events on this socket
+         *  \tparam Handler handler function which conforms to the SocketMonitorHandler concept
+         *  \param ios io_service on which to bind the returned monitor socket
+         *  \param handler Handler conforming to the SocketMonitorHandler concept as follows
+         *     void SocketMonitorHandler(boost::system::error_code const& ec,
+         *                               zmq_event_t const& event,
+         *                               boost::asio::const_buffer const& addr);
+         *  \param events int mask of events to publish to returned socket
+         *  \returns socket
+         *  \throws boost::system::system_error
+         *  \remark
+         *  The returned socket will be constructed on the supplied ios as a ZMQ_PAIR socket
+         *  type bound on the inproc transport to this socket's monitor. The supplied handler will
+         *  be registered to receive events asynchronously on the returned socket as long
+         *  as the returned socket remains in scope.
+        **/
+        template<typename Handler>
+        socket monitor(boost::asio::io_service & ios,
+                       Handler handler,
+                       int events = ZMQ_EVENT_ALL) {
+            boost::system::error_code ec;
+            auto res = monitor(ios, std::move(handler), events, ec);
+            if (ec)
+                throw boost::system::system_error(ec);
+            return res;
+        }
+
         /** \brief Create a proxy connection between two sockets
          *  \param frontend socket
          *  \param backened socket
@@ -503,6 +564,57 @@ namespace aziomq {
             return frontend.get_service().register_proxy(frontend.implementation,
                                                          backend.implementation,
                                                          capture.implementation);
+        }
+
+    private:
+        static std::string monitor_addr() {
+            static std::atomic<unsigned long> id(0);
+            return boost::str(boost::format("inproc://monitor.%1%") % ++id);
+        }
+
+        struct monitor_impl
+            : detail::zeromq_socket_service::assoc_handler
+            , std::enable_shared_from_this<monitor_impl> 
+        {
+            socket & self_;
+            std::function<void(boost::system::error_code const&,
+                               zmq_event_t const&,
+                               boost::asio::const_buffer const&)> func_;
+            std::string monitor_addr_;
+            zmq_event_t event_;
+            std::array<char, 1025> addr_;
+            std::array<boost::asio::mutable_buffer, 2> bufs_;
+
+            template<typename Handler>
+            monitor_impl(socket & self, Handler handler, const std::string & monitor_addr)
+                : self_(self)
+                , func_(std::move(handler))
+                , monitor_addr_(monitor_addr)
+                , bufs_{ boost::asio::buffer(&event_, sizeof(zmq_event_t)),
+                         boost::asio::buffer(addr_) }
+            { }
+
+            virtual void on_install() { 
+                std::weak_ptr<monitor_impl> p(shared_from_this());
+                self_.async_receive(bufs_,
+                                    [p](const boost::system::error_code & ec, size_t bytes_transferred) {
+                    if (auto pp = p.lock()) {
+                        pp->on_event(ec, bytes_transferred);
+                        pp->on_install();
+                    }
+                });
+            }
+
+            virtual void on_event(boost::system::error_code const& ec, size_t) {
+                func_(ec, event_, boost::asio::buffer(addr_));
+                addr_.fill(0);
+            }
+
+        };
+
+        template<typename Handler>
+        void associate_handler(Handler handler, const std::string & monitor_addr) {
+            get_service().associate_handler<monitor_impl>(implementation, *this, std::move(handler), monitor_addr);
         }
     };
 }
