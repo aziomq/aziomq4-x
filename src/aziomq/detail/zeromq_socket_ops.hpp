@@ -287,6 +287,18 @@ namespace socket_ops {
         }
         return bytes_transferred;
     }
+
+    boost::system::error_code monitor(socket_type socket,
+                                      const endpoint_type & addr,
+                                      int events,
+                                      boost::system::error_code & ec) {
+        BOOST_ASSERT_MSG(socket, "Invalid socket");
+
+        auto rc = zmq_socket_monitor(socket, addr.c_str(), events);
+        if (rc)
+            ec = make_error_code();
+        return ec;
+    }
 } // socket_ops
 
 
