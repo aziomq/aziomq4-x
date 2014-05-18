@@ -70,6 +70,7 @@ namespace socket_ops {
         return ec;
     }
 
+    inline
     boost::system::error_code native_handle(socket_type socket,
                                             native_handle_type & handle,
                                             boost::system::error_code & ec) {
@@ -82,6 +83,7 @@ namespace socket_ops {
         return ec;
     }
 
+    inline
     boost::system::error_code bind(socket_type socket,
                                    const endpoint_type & endpoint,
                                    boost::system::error_code & ec) {
@@ -93,6 +95,7 @@ namespace socket_ops {
         return ec;
     }
 
+    inline
     boost::system::error_code connect(socket_type socket,
                                       const endpoint_type & endpoint,
                                       boost::system::error_code & ec) {
@@ -104,6 +107,7 @@ namespace socket_ops {
         return ec;
     }
 
+    inline
     expected_size receive(socket_type socket,
                           message * msg,
                           message::flags_t flags) {
@@ -116,6 +120,7 @@ namespace socket_ops {
         return static_cast<std::size_t>(rc);
     }
 
+    inline
     expected_size receive(socket_type socket,
                           message * msg,
                           message::flags_t flags,
@@ -131,6 +136,7 @@ namespace socket_ops {
         return static_cast<std::size_t>(rc);
     }
 
+    inline
     expected_size send(socket_type socket,
                        message * msg,
                        message::flags_t flags) {
@@ -143,6 +149,7 @@ namespace socket_ops {
         return static_cast<std::size_t>(rc);
     }
 
+    inline
     expected_size send(socket_type socket,
                        message * msg,
                        message::flags_t flags,
@@ -159,6 +166,7 @@ namespace socket_ops {
         return static_cast<std::size_t>(rc);
     }
 
+    inline
     expected_size send(message & msg,
                        socket_type socket,
                        const boost::asio::const_buffer & source,
@@ -220,6 +228,7 @@ namespace socket_ops {
         return bytes_transferred + rc.get();
     }
 
+    inline
     expected_size receive(message & msg,
                           socket_type socket,
                           const boost::asio::mutable_buffer & target,
@@ -288,6 +297,7 @@ namespace socket_ops {
         return bytes_transferred;
     }
 
+    inline
     boost::system::error_code monitor(socket_type socket,
                                       const endpoint_type & addr,
                                       int events,
@@ -300,8 +310,6 @@ namespace socket_ops {
         return ec;
     }
 } // socket_ops
-
-
 } // detail
 } // aziomq
 #endif // AZIOMQ_SOCKET_OPS_HPP_
