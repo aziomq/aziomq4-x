@@ -98,6 +98,7 @@ namespace aziomq { namespace detail {
         }
     };
 
+    inline
     boost::asio::mutable_buffers_1 buffer(message & msg) {
         BOOST_ASSERT_MSG(msg.data() != nullptr, "Invalid message");
         return boost::asio::buffer(msg.data(), msg.size());
