@@ -44,10 +44,12 @@ namespace aziomq {
     class socket :
         public boost::asio::basic_io_object<io_service::service_type> {
 
+        friend detail::zeromq_socket_service::core_access;
+
     public:
         using native_handle_type = service_type::native_handle_type;
         using endpoint_type = boost::optional<std::string>;
-        using message_flags = int;
+        using message_flags = service_type::message_flags;
         using more_result = service_type::more_result;
         using proxy_type = service_type::proxy_type;
 
@@ -566,7 +568,69 @@ namespace aziomq {
                                                          capture.implementation);
         }
 
+        /** \brief Allows the caller to associate an instance which conforms to the
+         *  following protocol:
+         *      struct handler {
+         *          void on_install();
+         *
+         *          template<typename Option>
+         *          error_code set_option(Option const&, error_code &);
+         *
+         *          template<typename Option>
+         *          error_code get_option(Option &, error_code &);
+         *      };
+         *  with the supplied socket.
+         *  \remark Only one such registration may be made
+         *  per socket.  The supplied type will have it's on_install() method called
+         *  when the instance is installing on the socket.  The type will have
+         *  the same lifetime as the owning socket.  If on_install() throws, the
+         *  exception will propagate through this call and the socket will not be
+         *  changed.
+         *  \remark set/get_option allows the caller to interract with the handler
+         *  from the socket interface. If the handler does not support the supplied,
+         *  option, the handler should return errc::not_supported.  Handler options
+         *  should satisfy the following protocol:
+         *      struct option {
+         *          int name() const;
+         *          const void* data() const;
+         *          void* data();
+         *          size_t size() const;
+         *          void resize(size_t);
+         *      };
+         *  \returns true if the handler was installed, false if a handler is already
+         *  associated.
+         */
+        template<typename T>
+        bool associate_handler(T handler) {
+            handler_model<T> h(std::move(handler));
+            return get_service().associate_handler<handler_model<T>>(implementation, std::move(h));
+        }
+
     private:
+        template<typename T>
+        struct handler_model
+            : detail::zeromq_socket_service::assoc_handler
+        {
+            handler_model(T d) : data_(std::move(d)) { }
+            handler_model(handler_model && rhs) : data_(std::move(rhs.data_)) { }
+
+            handler_model(const handler_model&) = delete;
+            handler_model & operator=(const handler_model &) = delete;
+
+            void on_install() override { data_.on_install(); }
+            boost::system::error_code set_option(service_type::opt_concept const& opt,
+                                                 boost::system::error_code & ec) override {
+                return data_.set_option(opt, ec);
+            }
+
+            boost::system::error_code get_option(service_type::opt_concept & opt,
+                                                 boost::system::error_code & ec) override {
+                return data_.get_option(opt, ec);
+            }
+
+            T data_;
+        };
+
         static std::string monitor_addr() {
             static std::atomic<unsigned long> id(0);
             return boost::str(boost::format("inproc://monitor.%1%") % ++id);
@@ -574,7 +638,7 @@ namespace aziomq {
 
         struct monitor_impl
             : detail::zeromq_socket_service::assoc_handler
-            , std::enable_shared_from_this<monitor_impl> 
+            , std::enable_shared_from_this<monitor_impl>
         {
             socket & self_;
             std::function<void(boost::system::error_code const&,
@@ -594,22 +658,31 @@ namespace aziomq {
                          boost::asio::buffer(addr_) }
             { }
 
-            virtual void on_install() { 
-                std::weak_ptr<monitor_impl> p(shared_from_this());
-                self_.async_receive(bufs_,
-                                    [p](const boost::system::error_code & ec, size_t bytes_transferred) {
-                    if (auto pp = p.lock()) {
-                        pp->on_event(ec, bytes_transferred);
-                        pp->on_install();
-                    }
-                });
-            }
-
-            virtual void on_event(boost::system::error_code const& ec, size_t) {
+            void on_event(boost::system::error_code const& ec, size_t) {
                 func_(ec, event_, boost::asio::buffer(addr_));
                 addr_.fill(0);
             }
 
+            void run(std::weak_ptr<monitor_impl> p) {
+                self_.async_receive(bufs_,
+                                    [p](const boost::system::error_code & ec, size_t bytes_transferred) {
+                    if (auto pp = p.lock()) {
+                        pp->on_event(ec, bytes_transferred);
+                        pp->run(p);
+                    }
+                });
+            }
+
+            virtual void on_install() { run(shared_from_this()); }
+            boost::system::error_code set_option(service_type::opt_concept const&,
+                                                 boost::system::error_code & ec) override {
+                return ec = make_error_code(boost::system::errc::not_supported);
+            }
+
+            boost::system::error_code get_option(service_type::opt_concept &,
+                                                 boost::system::error_code & ec) override {
+                return ec = make_error_code(boost::system::errc::not_supported);
+            }
         };
 
         template<typename Handler>

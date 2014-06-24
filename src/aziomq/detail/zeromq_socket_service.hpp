@@ -21,6 +21,8 @@
 #include <boost/asio/detail/reactor_op.hpp>
 #include <boost/asio/detail/socket_types.hpp>
 #include <boost/system/system_error.hpp>
+#include <boost/logic/tribool.hpp>
+#include <boost/uuid/uuid.hpp>
 
 #include <zmq.h>
 
@@ -41,15 +43,44 @@ namespace detail {
         using reactor = boost::asio::detail::reactor;
         using endpoint_type = socket_ops::endpoint_type;
         using mutex_type  = std::mutex;
+        using message_flags = int;
         using more_result = socket_ops::more_result;
 
         static boost::asio::io_service::id id;
+
+        struct opt_concept {
+            opt_concept() { }
+            opt_concept(opt_concept const&) = delete;
+            opt_concept& operator=(opt_concept const&) = delete;
+
+            virtual ~opt_concept() { }
+
+            virtual int name() const = 0;
+            virtual void const* data() const = 0;
+            virtual void* data() = 0;
+            virtual size_t size() const = 0;
+            virtual void resize(size_t) = 0;
+        };
+
+        template<typename O>
+        struct opt_model : opt_concept {
+            O& opt_;
+
+            opt_model(O& opt) : opt_(opt) { }
+
+            int name() const override { return opt_.name(); }
+            void const* data() const override { return opt_.data(); }
+            void* data() override { return opt_.data(); }
+            size_t size() const override { return opt_.size(); }
+            void resize(size_t size) override { return opt_.resize(size); }
+        };
 
         struct assoc_handler {
             virtual ~assoc_handler() = default;
 
             virtual void on_install() = 0;
-            virtual void on_event(boost::system::error_code const&, size_t) = 0;
+            virtual boost::system::error_code set_option(opt_concept const&, boost::system::error_code &) = 0;
+            virtual boost::system::error_code get_option(opt_concept &, boost::system::error_code &) = 0;
         };
         using assoc_handler_ptr = std::shared_ptr<assoc_handler>;
         using weak_assoc_handler_ptr = std::weak_ptr<assoc_handler>;
@@ -59,9 +90,86 @@ namespace detail {
             int shutdown_;
             std::vector<endpoint_type> endpoint_;
             assoc_handler_ptr assoc_handler_;
-
             reactor::per_descriptor_data reactor_data_;
         };
+
+        struct core_access {
+            using service_type = zeromq_socket_service;
+            using implementation_type = service_type::implementation_type;
+
+            template<typename T>
+            core_access(T that) : ptr_(new model<T>(std::move(that))) { }
+
+            void reset() { ptr_.reset(); }
+
+            operator bool() const { return ptr_.get() != nullptr; }
+
+            zeromq_socket_service & get_service() {
+                BOOST_ASSERT_MSG(ptr_, "Reusing a moved instance of core_access");
+                return ptr_->get_service();
+            }
+
+            implementation_type & get_implementation() {
+                BOOST_ASSERT_MSG(ptr_, "Reusing a moved instance of core_access");
+                return ptr_->get_implementation();
+            }
+
+            template<typename T>
+            static service_type & get_service(T & that) {
+                return that.get_service();
+            }
+
+            template<typename T>
+            static implementation_type & get_implementation(T & that) {
+                return that.get_implementation();
+            }
+
+        private:
+            friend zeromq_socket_service;
+            core_access(service_type & service, implementation_type & impl) :
+                ptr_(new direct(service, impl))
+            { }
+
+            struct concept {
+                virtual ~concept() { }
+
+                virtual service_type & get_service() = 0;
+                virtual implementation_type & get_implementation() = 0;;
+            };
+            std::unique_ptr<concept> ptr_;
+
+            struct direct : concept {
+                service_type & service_;
+                implementation_type & impl_;
+
+                direct(service_type & service, implementation_type & impl)
+                    : service_(service)
+                    , impl_(impl)
+                { }
+
+                service_type & get_service() override { return service_; }
+                implementation_type & get_implementation() override { return impl_; }
+            };
+
+            template<typename T>
+            struct model : concept {
+                model(T data) : data_(std::move(data)) { }
+
+                service_type & get_service() override {
+                    return service_type::core_access::get_service(data_);
+                }
+
+                implementation_type & get_implementation() override {
+                    return service_type::core_access::get_implementation(data_);
+                }
+
+                T data_;
+            };
+        };
+
+        static core_access make_core_access(zeromq_socket_service & service, implementation_type & impl) {
+            return core_access(service, impl);
+        }
 
         explicit zeromq_socket_service(boost::asio::io_service & io_service) :
             boost::asio::io_service::service(io_service),
@@ -91,8 +199,8 @@ namespace detail {
             impl.shutdown_ = other.shutdown_;
             other.shutdown_ = -1;
 
-            impl.endpoint_ = other.endpoint_;
-            other.endpoint_.clear();
+            std::swap(impl.endpoint_, other.endpoint_);
+            std::swap(impl.assoc_handler_, other.assoc_handler_);
 
             other_service.reactor_.move_descriptor(native_handle(impl),
                                         impl.reactor_data_, other.reactor_data_);
@@ -108,16 +216,20 @@ namespace detail {
             impl.shutdown_ = other.shutdown_;
             other.shutdown_ = -1;
 
-            impl.endpoint_ = std::move(other.endpoint_);
+            std::swap(impl.endpoint_, other.endpoint_);
+            std::swap(impl.assoc_handler_, other.assoc_handler_);
 
             other_service.reactor_.move_descriptor(native_handle(impl),
                                         impl.reactor_data_, other.reactor_data_);
         }
 
         template<typename T, typename... Args>
-        void associate_handler(implementation_type & impl, Args&&... args) {
-            impl.assoc_handler_ = std::make_shared<T>(std::forward<Args>(args)...);
-            impl.assoc_handler_->on_install();
+        bool associate_handler(implementation_type & impl, Args&&... args) {
+            if (impl.assoc_handler_) return false;
+            auto h = std::make_shared<T>(std::forward<Args>(args)...);
+            h->on_install();
+            impl.assoc_handler_ = h;
+            return true;
         }
 
         boost::system::error_code do_open(implementation_type & impl,
@@ -202,6 +314,14 @@ namespace detail {
         template<typename Option>
         boost::system::error_code set_option(implementation_type & impl,
                 const Option & option, boost::system::error_code & ec) {
+            if (impl.assoc_handler_) {
+                opt_model<Option> o(const_cast<Option&>(option));
+                if (impl.assoc_handler_->set_option(o, ec)) {
+                    if (ec.value() != boost::system::errc::not_supported)
+                        return ec; // handler accepted option, and reported error
+                    ec = boost::system::error_code();
+                }
+            }
             return socket_ops::set_option(impl.socket_, option, ec);
         }
 
@@ -223,6 +343,14 @@ namespace detail {
         template<typename Option>
         static boost::system::error_code get_option(implementation_type & impl,
                 Option & option, boost::system::error_code & ec) {
+            if (impl.assoc_handler_) {
+                opt_model<Option> o(option);
+                if (impl.assoc_handler_->get_option(o, ec)) {
+                    if (ec.value() != boost::system::errc::not_supported)
+                        return ec; // handler accepted option, and reported error
+                    ec = boost::system::error_code();
+                }
+            }
             return socket_ops::get_option(impl.socket_, option, ec);
         }
 
@@ -326,9 +454,10 @@ namespace detail {
                 message msg;
                 if (flags & ZMQ_RCVMORE) {
                     auto rc = socket_ops::receive(msg, impl.socket_, buffers, flags,
-                                                    socket_ops::receive_more_t());
+                                                  socket_ops::receive_more_t());
                     auto mr = rc.get();
                     bytes_transferred = mr.first;
+
                     if (mr.second)
                         ec = make_error_code(boost::system::errc::no_buffer_space);
                 } else {
