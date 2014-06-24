@@ -60,6 +60,7 @@ scope_guard_t<F> operator+(scope_guard_on_exit, F && func) {
     #define ANONYMOUS_VARIABLE(str)\
         CONCATENATE(str,__LINE__)
 #endif // __COUNTER__
+
 #define SCOPE_EXIT\
-    auto ANONYMOUS_VARIABLE(SCOPE_EXIT_STATE) = aziomq::detail::scope_guard_on_exit() + [&]()
+    auto ANONYMOUS_VARIABLE(SCOPE_EXIT_STATE) = aziomq::util::scope_guard_on_exit() + [&]()
 #endif // AZIOMQ_SCOPE_GUARD_HPP_
