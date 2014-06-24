@@ -11,13 +11,32 @@
 
 #include <zmq.h>
 #include <boost/asio/buffer.hpp>
+#include <boost/logic/tribool.hpp>
 
 #include <vector>
 #include <string>
 
 namespace aziomq { namespace opt {
+    // limits for user/aziomq-defined options (should be well outside of the valid ZMQ range)
+    enum class limits : int {
+        lib_min = 1000000,
+        lib_ctx_min = lib_min,
+        lib_ctx_max = lib_ctx_min + 9999,
+        lib_socket_min,
+        lib_socket_max = lib_socket_min + 9999,
+        lib_max = lib_socket_max,
+        user_min,
+        user_ctx_min = lib_min,
+        user_ctx_max = user_ctx_min + 9999,
+        user_socket_min,
+        user_socket_max = user_socket_min + 9999,
+        user_max = user_socket_max
+    };
+
     template<typename T, int N>
     struct opt_base {
+        using static_name = std::integral_constant<int, N>;
+        using value_t = T;
         T value;
 
         opt_base() = default;
@@ -177,12 +196,9 @@ namespace aziomq { namespace opt {
         conflate(int v = 0) : opt_base{ v } { }
     };
 
-    //struct : opt_base<int, >, opt_nop_resize {
-//(int v = 0) : opt_base{ v } { }
-    //};
-
     template<int N>
     struct opt_binary {
+        using static_name = std::integral_constant<int, N>;
         using value_t = std::vector<uint8_t>;
         value_t value;
 
@@ -232,6 +248,7 @@ namespace aziomq { namespace opt {
 
     template<int N>
     struct opt_string {
+        using static_name = std::integral_constant<int, N>;
         using value_t = std::vector<char>;
         value_t value;
 
@@ -294,6 +311,46 @@ namespace aziomq { namespace opt {
         curve_privatekey(void *pv, size_t size) :
             opt_curve_key{ pv, size } { }
     };
+
+    template<int N>
+    struct opt_tribool : opt_nop_resize {
+        using static_name = std::integral_constant<int, N>;
+        using value_t = boost::logic::tribool;
+        value_t value;
+
+        opt_tribool(boost::logic::tribool v = boost::logic::indeterminate) : value(std::move(v)) { }
+
+        int name() const { return N; }
+        const void* data() const { return reinterpret_cast<const void*>(&value); }
+        void* data() { return reinterpret_cast<void*>(&value); }
+        size_t size() const { return sizeof(value_t); }
+
+        void set(const value_t & v) { value = v; }
+
+        bool indeterminate() const { return boost::logic::indeterminate(value); }
+        operator value_t() const { return value; }
+    };
+
+    namespace peer {
+        enum class option_id : int {
+            is_alive = static_cast<int>(limits::lib_socket_min),
+            detached,
+            last_error
+        };
+
+        struct is_alive : opt_tribool<static_cast<int>(option_id::is_alive)> {
+            operator bool() const { return value == true; }
+        };
+
+        struct detached : opt_base<bool, static_cast<int>(option_id::detached)>, opt_nop_resize {
+            detached(bool v = true) : opt_base(v) { }
+        };
+
+        struct last_error : opt_base<std::exception_ptr, static_cast<int>(option_id::last_error)>, opt_nop_resize {
+            operator bool() const { return value != std::exception_ptr(); }
+            void rethrow() const { std::rethrow_exception(value); }
+        };
+    } // namespace peer
 } }
 
 #endif // AZIOMQ_OPTION_HPP_

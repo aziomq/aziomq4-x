@@ -52,7 +52,7 @@ namespace socket_ops {
     }
 
     template<typename Option>
-    boost::system::error_code get_option(socket_type * socket,
+    boost::system::error_code get_option(socket_type socket,
                                          Option & option,
                                          boost::system::error_code & ec) {
         BOOST_ASSERT_MSG(socket, "Invalid socket");
@@ -62,7 +62,7 @@ namespace socket_ops {
         auto rc = zmq_getsockopt(socket, option.name(), option.data(), &size);
         if (rc && errno == EINVAL) {
             option.resize(size);
-            rc = zmq_getsockoption(socket, option.name(), option.data(), &size);
+            rc = zmq_getsockopt(socket, option.name(), option.data(), &size);
         }
 
         if (rc)
