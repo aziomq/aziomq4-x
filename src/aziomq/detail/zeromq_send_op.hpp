@@ -124,6 +124,79 @@ private:
     Handler handler_;
 };
 
+class zeromq_raw_send_op_base : public reactor_op
+    AZIOMQ_ALSO_INERIT_TRACKED_OP {
+
+public:
+    zeromq_raw_send_op_base(socket_ops::socket_type socket,
+                            message const& msg,
+                            int flags,
+                            func_type complete_func)
+        : reactor_op(socket, flags, do_perform_receive, complete_func)
+        , msg_(msg)
+    {
+        AZIOMQ_TRACKED_OP_INIT(*this, "receive_op");
+    }
+
+    static bool do_perform_receive(boost::asio::detail::reactor_op* base) {
+        auto o = static_cast<zeromq_raw_send_op_base*>(base);
+        o->ec_ = boost::system::error_code();
+        try {
+            auto rc = socket_ops::send(o->socket_, &o->msg_, o->flags_);
+            o->bytes_transferred_ = rc.get();
+        } catch (boost::system::system_error const& e) {
+            o->ec_ = e.code();
+        }
+        return true;
+    }
+
+private:
+    message msg_;
+};
+
+template<typename Handler>
+class zeromq_raw_send_op : public zeromq_raw_send_op_base {
+public:
+    BOOST_ASIO_DEFINE_HANDLER_PTR(zeromq_raw_send_op);
+
+    zeromq_raw_send_op(socket_ops::socket_type socket,
+                       message const& msg,
+                       Handler handler,
+                       int flags)
+        : zeromq_raw_send_op_base(socket, msg, flags, &zeromq_raw_send_op::do_complete)
+        , handler_(std::move(handler))
+    { }
+
+    static void do_complete(boost::asio::detail::io_service_impl* owner,
+                            boost::asio::detail::operation* base,
+                            const boost::system::error_code&,
+                            size_t) {
+        auto o = static_cast<zeromq_raw_send_op*>(base);
+        AZIOMQ_TRACKED_OP_ON_COMPLETE(*o, o->ec_, o->bytes_transferred_);
+
+        ptr p = { boost::asio::detail::addressof(o->handler_), o, o };
+
+        BOOST_ASIO_HANDLER_COMPLETION((o));
+
+        if (o->more())
+            o->ec_ = make_error_code(boost::system::errc::no_buffer_space);
+
+        boost::asio::detail::binder2<Handler, boost::system::error_code, size_t>
+            handler(o->handler_, o->ec_, o->bytes_transferred_);
+        p.h = boost::asio::detail::addressof(handler.handler_);
+        p.reset();
+
+        if (owner) {
+            boost::asio::detail::fenced_block b(boost::asio::detail::fenced_block::half);
+            BOOST_ASIO_HANDLER_INVOCATION_BEGIN((handler.arg1_, handler.arg2_));
+            boost_asio_handler_invoke_helpers::invoke(handler, handler.handler_);
+            BOOST_ASIO_HANDLER_INVOCATION_END;
+        }
+    }
+private:
+    Handler handler_;
+};
+
 } // detail
 } // aziomq
 #endif // AZIOMQ_ZEROMQ_SEND_OP_HPP_
