@@ -70,12 +70,12 @@ namespace thread {
 
     private:
         using service_type = socket::service_type;
-        struct concept 
+        struct concept
             : std::enable_shared_from_this<concept> {
 
             std::string uri_;
-            boost::asio::signal_set signals_;
             boost::asio::io_service ios_;
+            boost::asio::signal_set signals_;
             socket s_;
 
             std::thread t_;
@@ -99,11 +99,8 @@ namespace thread {
                 s_.bind(uri_);
             }
 
-            virtual ~concept() {
-                try { stop(); } catch (...) { }
-            }
-
             bool joinable() const { return t_.joinable(); }
+
             void stop() {
                 if (joinable()) {
                     ios_.stop();
@@ -187,14 +184,24 @@ namespace thread {
         };
 
         struct handler {
-            ptr p_;
+            weak_ptr p_;
 
             handler(weak_ptr p) : p_(std::move(p)) { }
 
             handler(handler && rhs) = default;
             handler & operator=(handler && rhs) = default;
 
-            void on_install() { p_->run(); }
+            ~handler() {
+                if (auto p = p_.lock()) {
+                    try { p->stop(); }
+                    catch (...) { }
+                }
+            }
+
+            void on_install() {
+                if (auto p = p_.lock())
+                    p->run();
+            }
 
             boost::system::error_code set_option(service_type::opt_concept const& opt,
                                                  boost::system::error_code & ec) {
@@ -205,13 +212,18 @@ namespace thread {
                     case detached::static_name::value :
                         {
                             auto v = reinterpret_cast<detached::value_t const*>(opt.data());
-                            if (*v) p_->detach();
+                            if (*v) {
+                                if (auto p = p_.lock())
+                                    p->detach();
+                                else
+                                    ec = make_error_code(boost::system::errc::interrupted);
+                            }
                         }
                         break;
                     case last_error::static_name::value :
                         ec = make_error_code(boost::system::errc::no_protocol_option);
                         break;
-                    default: 
+                    default:
                         ec = make_error_code(boost::system::errc::not_supported);
                         break;
                 }
@@ -224,26 +236,35 @@ namespace thread {
                     case is_alive::static_name::value :
                         {
                             auto v = reinterpret_cast<is_alive::value_t*>(opt.data());
-                            *v = boost::logic::tribool(p_->is_stopped());
+                            if (auto p = p_.lock())
+                                *v = boost::logic::tribool(p->is_stopped());
+                            else
+                                ec = make_error_code(boost::system::errc::interrupted);
                         }
                         break;
                     case detached::static_name::value :
                         {
                             auto v = reinterpret_cast<detached::value_t*>(opt.data());
-                            *v = p_->joinable();
+                            if (auto p = p_.lock())
+                                *v = p->joinable();
+                            else
+                                ec = make_error_code(boost::system::errc::interrupted);
                         }
                         break;
                     case last_error::static_name::value :
                         {
                             auto v = reinterpret_cast<last_error::value_t*>(opt.data());
-                            *v = p_->last_error();
+                            if (auto p = p_.lock())
+                                *v = p->last_error();
+                            else
+                                ec = make_error_code(boost::system::errc::interrupted);
                         }
                         break;
                     default:
                       ec = make_error_code(boost::system::errc::not_supported);
                       break;
                 }
-                return ec; 
+                return ec;
             }
         };
 

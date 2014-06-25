@@ -64,9 +64,8 @@ public:
                                             o->flags_, o->it_,
                                             socket_ops::dont_wait_t());
             auto bt = rc.get();
-            if (bt != 0)
-                ++o->it_;
             o->bytes_transferred_ += bt;
+            ++o->it_;
         } catch (const boost::system::system_error & e) {
             o->ec_ = e.code();
         }

@@ -44,7 +44,7 @@ namespace aziomq {
     class socket :
         public boost::asio::basic_io_object<io_service::service_type> {
 
-        friend detail::zeromq_socket_service::core_access;
+        friend io_service::service_type::core_access;
 
     public:
         using native_handle_type = service_type::native_handle_type;
