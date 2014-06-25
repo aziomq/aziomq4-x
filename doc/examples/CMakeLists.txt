@@ -6,3 +6,5 @@ add_subdirectory(mixed_sockets)
 add_subdirectory(monitor)
 add_subdirectory(multipart_messages)
 add_subdirectory(proxy)
+add_subdirectory(threads)
+

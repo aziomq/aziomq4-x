@@ -10,11 +10,7 @@
 //#include "shared_context.hpp"
 #include "single_message_tests.hpp"
 #include "multi_message_tests.hpp"
-
-#include "../aziomq/error.hpp"
-#include "../aziomq/option.hpp"
-#include "../aziomq/io_service.hpp"
-#include "../aziomq/socket.hpp"
+#include "thread_tests.hpp"
 
 #include <zmq.h>
 #include <boost/asio/buffer.hpp>
@@ -34,5 +30,6 @@ int cpp_main(int argc, char **argv) {
 
     single_message_tests::apply();
     multi_message_tests::apply();
+    thread_tests::apply();
     return 0;
 }
