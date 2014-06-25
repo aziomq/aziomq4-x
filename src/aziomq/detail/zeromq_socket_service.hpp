@@ -426,6 +426,20 @@ namespace detail {
             return bytes_transferred;
         }
 
+        size_t send(implementation_type & impl,
+                    message const& msg,
+                    int flags,
+                    boost::system::error_code & ec) {
+            size_t bytes_transferred = 0;
+            try {
+                auto rc = socket_ops::send(impl.socket_, &const_cast<message&>(msg), flags);
+                bytes_transferred = rc.get();
+            } catch (const boost::system::system_error & e) {
+                ec = e.code();
+            }
+            return bytes_transferred;
+        }
+
         template<typename ConstBufferSequence,
                  typename Handler>
         void async_send(implementation_type & impl,
@@ -438,6 +452,23 @@ namespace detail {
             typename op::ptr p = { boost::asio::detail::addressof(handler),
                 boost_asio_handler_alloc_helpers::allocate(sizeof(op), handler), 0 };
             p.p = new (p.v) op(impl.socket_, buffers, handler, flags | ZMQ_DONTWAIT);
+
+            start_op(impl, boost::asio::detail::reactor::write_op, p.p,
+                        is_continuation, true);
+            p.v = p.p = 0;
+        }
+
+        template<typename Handler>
+        void async_send(implementation_type & impl,
+                        message const& msg,
+                        Handler handler,
+                        int flags) {
+            bool is_continuation = boost_asio_handler_cont_helpers::is_continuation(handler);
+
+            typedef zeromq_raw_send_op<Handler> op;
+            typename op::ptr p = { boost::asio::detail::addressof(handler),
+                boost_asio_handler_alloc_helpers::allocate(sizeof(op), handler), 0 };
+            p.p = new (p.v) op(impl.socket_, msg, handler, flags | ZMQ_DONTWAIT);
 
             start_op(impl, boost::asio::detail::reactor::write_op, p.p,
                         is_continuation, true);
@@ -464,6 +495,22 @@ namespace detail {
                     auto rc = socket_ops::receive(msg, impl.socket_, buffers, flags);
                     bytes_transferred = rc.get();
                 }
+            } catch (const boost::system::system_error & e) {
+                ec = e.code();
+            }
+            return bytes_transferred;
+        }
+
+        size_t receive(implementation_type & impl,
+                       message & msg,
+                       int flags,
+                       boost::system::error_code & ec,
+                       bool should_rebuild) {
+            size_t bytes_transferred = 0;
+            try {
+                if (should_rebuild) msg.rebuild();
+                auto rc = socket_ops::receive(impl.socket_, &msg, flags);
+                bytes_transferred = rc.get();
             } catch (const boost::system::system_error & e) {
                 ec = e.code();
             }
@@ -517,6 +564,26 @@ namespace detail {
             typename op::ptr p = { boost::asio::detail::addressof(handler),
                 boost_asio_handler_alloc_helpers::allocate(sizeof(op), handler), 0 };
             p.p = new (p.v) op(impl.socket_, buffers, handler, flags);
+
+            start_op(impl, boost::asio::detail::reactor::read_op, p.p,
+                        is_continuation, true);
+            p.v = p.p = 0;
+        }
+
+        template<typename Handler>
+        void async_receive(implementation_type & impl,
+                           message & msg,
+                           Handler handler,
+                           int flags,
+                           bool rebuild_message) {
+            if (rebuild_message)
+                msg.rebuild(true);
+            bool is_continuation = boost_asio_handler_cont_helpers::is_continuation(handler);
+
+            typedef zeromq_raw_receive_op<Handler> op;
+            typename op::ptr p = { boost::asio::detail::addressof(handler),
+                boost_asio_handler_alloc_helpers::allocate(sizeof(op), handler), 0 };
+            p.p = new (p.v) op(impl.socket_, msg, handler, flags);
 
             start_op(impl, boost::asio::detail::reactor::read_op, p.p,
                         is_continuation, true);
