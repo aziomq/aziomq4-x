@@ -269,8 +269,8 @@ namespace aziomq { namespace opt {
             value.resize(size);
         }
 
-        operator value_t() const {
-            std::string(std::begin(value), std::end(value));
+        operator std::string() const {
+            return std::string(std::begin(value), std::end(value));
         }
     };
 
@@ -335,7 +335,8 @@ namespace aziomq { namespace opt {
         enum class option_id : int {
             is_alive = static_cast<int>(limits::lib_socket_min),
             detached,
-            last_error
+            last_error,
+            start
         };
 
         struct is_alive : opt_tribool<static_cast<int>(option_id::is_alive)> {
@@ -349,6 +350,11 @@ namespace aziomq { namespace opt {
         struct last_error : opt_base<std::exception_ptr, static_cast<int>(option_id::last_error)>, opt_nop_resize {
             operator bool() const { return value != std::exception_ptr(); }
             void rethrow() const { std::rethrow_exception(value); }
+        };
+
+
+        struct start : opt_base<bool, static_cast<int>(option_id::start)>, opt_nop_resize {
+            start(bool v = true) : opt_base(v) { }
         };
     } // namespace peer
 } }

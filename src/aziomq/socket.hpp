@@ -52,6 +52,8 @@ namespace aziomq {
         using message_flags = service_type::message_flags;
         using more_result = service_type::more_result;
         using proxy_type = service_type::proxy_type;
+        using raw_message = detail::message;
+        using ref = std::reference_wrapper<socket>;
 
         // socket options
         using type = opt::type;
@@ -285,6 +287,44 @@ namespace aziomq {
             return res;
         }
 
+        /** \brief Receive some data from the socket
+         *  \param msg raw_message to fill on receive
+         *  \param flags specifying how the receive call is to be made
+         *  \param ec set to indicate what error, if any, occurred
+         *  \param rebuild_message bool
+         *  \remarks
+         *      This variant provides access to a type that thinly wraps the underlying
+         *      libzmq message type.  The rebuild_message flag indicates whether the
+         *      message provided should be closed and rebuilt.  This is useful when
+         *      reusing the same message instance across multiple receive operations.
+         */
+        std::size_t receive(raw_message & msg,
+                            message_flags flags = 0,
+                            bool rebuild_message = false) {
+            boost::system::error_code ec;
+            auto res = receive(msg, flags, ec, rebuild_message);
+            if (ec)
+                throw boost::system::system_error(ec);
+            return res;
+        }
+
+        /** \brief Receive some data from the socket
+         *  \param msg raw_message to fill on receive
+         *  \param flags specifying how the receive call is to be made
+         *  \param rebuild_message bool
+         *  \remarks
+         *      This variant provides access to a type that thinly wraps the underlying
+         *      libzmq message type.  The rebuild_message flag indicates whether the
+         *      message provided should be closed and rebuilt.  This is useful when
+         *      reusing the same message instance across multiple receive operations.
+         */
+        std::size_t receive(raw_message & msg,
+                            message_flags flags,
+                            boost::system::error_code & ec,
+                            bool rebuild_message = false) {
+            return get_service().receive(implementation, msg, flags, ec, rebuild_message);
+        }
+
         /** \brief Receive some data as part of a multipart message from the socket
          *  \tparam MutableBufferSequence
          *  \param buffers buffer(s) to fill on receive
@@ -373,6 +413,36 @@ namespace aziomq {
             return res;
         }
 
+        /** \brief Send some data from the socket
+         *  \param msg raw_message to send
+         *  \param flags specifying how the send call is to be made
+         *  \param ec set to indicate what, if any, error occurred
+         *  \remarks
+         *      This variant provides access to a type that thinly wraps the underlying
+         *      libzmq message type.
+         */
+        std::size_t send(raw_message const& msg,
+                         message_flags flags,
+                         boost::system::error_code & ec) {
+            return get_service().send(implementation, msg, flags, ec);
+        }
+
+        /** \brief Send some data from the socket
+         *  \param msg raw_message to send
+         *  \param flags specifying how the send call is to be made
+         *  \remarks
+         *      This variant provides access to a type that thinly wraps the underlying
+         *      libzmq message type.
+         */
+        std::size_t send(raw_message const& msg,
+                         message_flags flags = 0) {
+            boost::system::error_code ec;
+            auto res = get_service().send(implementation, msg, flags, ec);
+            if (res)
+                throw boost::system::error_code(ec);
+            return res;
+        }
+
         /** \brief Initiate an async receive operation.
          *  \tparam MutableBufferSequence
          *  \tparam ReadHandler must conform to the asio ReadHandler concept
@@ -434,6 +504,28 @@ namespace aziomq {
                                              std::move(handler), flags);
         }
 
+        /** \brief Initate an async receive operation
+         *  \tparam ReadHandler must conform to the asio ReadHandler concept
+         *  \param msg raw_message reference
+         *  \param handler ReadHandler
+         *  \param flags int flags
+         *  \param rebuild_message bool
+         *  \remarks
+         *      This variant provides access to a type that thinly wraps the underlying
+         *      libzmq message type.  The rebuild_message flag indicates whether the
+         *      message provided should be closed and rebuilt.  This is useful when
+         *      reusing the same message instance across multiple receive operations.
+         */
+        template<typename ReadHandler>
+        void async_receive(raw_message & msg,
+                           ReadHandler handler,
+                           message_flags flags = 0,
+                           bool rebuild_message = false) {
+            get_service().async_receive(implementation, msg,
+                                        std::move(handler), flags,
+                                        rebuild_message);
+        }
+
         /** \brief Initiate an async send operation
          *  \tparam ConstBufferSequence must conform to the asio
          *          ConstBufferSequence concept
@@ -455,7 +547,24 @@ namespace aziomq {
                         WriteHandler handler,
                         message_flags flags = 0) {
             get_service().async_send(implementation, buffers,
-                                        std::move(handler), flags);
+                                     std::move(handler), flags);
+        }
+
+        /** \brief Initate an async send operation
+         *  \tparam WriteHandler must conform to the asio ReadHandler concept
+         *  \param msg raw_message reference
+         *  \param handler ReadHandler
+         *  \param flags int flags
+         *  \remarks
+         *      This variant provides access to a type that thinly wraps the underlying
+         *      libzmq message type.
+         */
+        template<typename WriteHandler>
+        void async_send(raw_message const& msg,
+                        WriteHandler handler,
+                        message_flags flags = 0) {
+            get_service().async_send(implementation, msg,
+                                     std::move(handler), flags);
         }
 
         boost::system::error_code shutdown(shutdown_type what,
