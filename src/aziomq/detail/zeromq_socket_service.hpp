@@ -23,6 +23,7 @@
 #include <boost/system/system_error.hpp>
 #include <boost/logic/tribool.hpp>
 #include <boost/uuid/uuid.hpp>
+#include <boost/container/flat_map.hpp>
 
 #include <zmq.h>
 
@@ -30,6 +31,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <typeindex>
 
 namespace aziomq {
 namespace detail {
@@ -79,6 +81,7 @@ namespace detail {
             virtual ~assoc_handler() = default;
 
             virtual void on_install() = 0;
+            virtual void on_remove() = 0;
             virtual boost::system::error_code set_option(opt_concept const&, boost::system::error_code &) = 0;
             virtual boost::system::error_code get_option(opt_concept &, boost::system::error_code &) = 0;
         };
@@ -89,7 +92,7 @@ namespace detail {
             socket_type socket_;
             int shutdown_;
             std::vector<endpoint_type> endpoint_;
-            assoc_handler_ptr assoc_handler_;
+            boost::container::flat_map<std::type_index, assoc_handler_ptr> assoc_handlers_;
             reactor::per_descriptor_data reactor_data_;
         };
 
@@ -199,8 +202,8 @@ namespace detail {
             impl.shutdown_ = other.shutdown_;
             other.shutdown_ = -1;
 
-            std::swap(impl.endpoint_, other.endpoint_);
-            std::swap(impl.assoc_handler_, other.assoc_handler_);
+            impl.endpoint_ = std::move(other.endpoint_);
+            impl.assoc_handlers_ = std::move(other.assoc_handlers_);
 
             other_service.reactor_.move_descriptor(native_handle(impl),
                                         impl.reactor_data_, other.reactor_data_);
@@ -216,20 +219,30 @@ namespace detail {
             impl.shutdown_ = other.shutdown_;
             other.shutdown_ = -1;
 
-            std::swap(impl.endpoint_, other.endpoint_);
-            std::swap(impl.assoc_handler_, other.assoc_handler_);
+            impl.endpoint_ = std::move(other.endpoint_);
+            impl.assoc_handlers_ = std::move(other.assoc_handlers_);
 
             other_service.reactor_.move_descriptor(native_handle(impl),
                                         impl.reactor_data_, other.reactor_data_);
         }
 
         template<typename T, typename... Args>
-        bool associate_handler(implementation_type & impl, Args&&... args) {
-            if (impl.assoc_handler_) return false;
+        bool associate_handler(implementation_type & impl, std::type_index key, Args&&... args) {
             auto h = std::make_shared<T>(std::forward<Args>(args)...);
-            h->on_install();
-            impl.assoc_handler_ = h;
-            return true;
+            auto ib = impl.assoc_handlers_.emplace(std::move(key), h);
+            if (ib.second)
+                h->on_install();
+            return ib.second;
+        }
+
+        bool remove_handler(implementation_type & impl, std::type_index key) {
+            auto it = impl.assoc_handlers_.find(key);
+            if (it == std::end(impl.assoc_handlers_))
+                return false;
+            auto h = it->second;
+            impl.assoc_handlers_.erase(it);
+            h->on_remove();
+            return true; 
         }
 
         boost::system::error_code do_open(implementation_type & impl,
@@ -251,7 +264,7 @@ namespace detail {
         }
 
         void destroy(implementation_type & impl) const {
-            impl.assoc_handler_.reset();
+            impl.assoc_handlers_.clear();
             if (!is_open(impl)) return;
             reactor_.deregister_descriptor(native_handle(impl),
                     impl.reactor_data_, true);
@@ -313,13 +326,14 @@ namespace detail {
 
         template<typename Option>
         boost::system::error_code set_option(implementation_type & impl,
-                const Option & option, boost::system::error_code & ec) {
-            if (impl.assoc_handler_) {
+                                             const Option & option,
+                                             boost::system::error_code & ec) {
+            for (auto& handler : impl.assoc_handlers_) {
                 opt_model<Option> o(const_cast<Option&>(option));
-                if (impl.assoc_handler_->set_option(o, ec)) {
-                    if (ec.value() != boost::system::errc::not_supported)
-                        return ec; // handler accepted option, and reported error
-                    ec = boost::system::error_code();
+                if (handler.second->set_option(o, ec)) {
+                    if (ec.value() == boost::system::errc::not_supported)
+                        continue;
+                    return ec; // handler accepted option, and reported an error
                 }
             }
             return socket_ops::set_option(impl.socket_, option, ec);
@@ -343,12 +357,12 @@ namespace detail {
         template<typename Option>
         static boost::system::error_code get_option(implementation_type & impl,
                 Option & option, boost::system::error_code & ec) {
-            if (impl.assoc_handler_) {
+            for (auto& handler : impl.assoc_handlers_) {
                 opt_model<Option> o(option);
-                if (impl.assoc_handler_->get_option(o, ec)) {
-                    if (ec.value() != boost::system::errc::not_supported)
-                        return ec; // handler accepted option, and reported error
-                    ec = boost::system::error_code();
+                if (handler.second->get_option(o, ec)) {
+                    if (ec.value() == boost::system::errc::not_supported)
+                        continue;
+                    return ec; // handler accepted option, and reported error
                 }
             }
             return socket_ops::get_option(impl.socket_, option, ec);
