@@ -231,6 +231,13 @@ namespace thread {
                     p->run();
             }
 
+            void on_remove() {
+                if (defer_start_) return;
+
+                if (auto p = p_.lock())
+                    p->stop();
+            }
+
             boost::system::error_code set_option(service_type::opt_concept const& opt,
                                                  boost::system::error_code & ec) {
                 switch (opt.name()) {

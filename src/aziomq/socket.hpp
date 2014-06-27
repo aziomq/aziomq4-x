@@ -195,6 +195,18 @@ namespace aziomq {
             return get_service().set_option(implementation, opt, ec);
         }
 
+        /** \brief as for set_option, but only for an associated handler
+         *  \tparam Handler to set the option on
+         *  \tparam Option type which must conform the asio SettableSocketOption concept
+         *  \param ec error_code to capture error
+         *  \param opt T option to set
+         */
+        template<typename Handler, typename Option>
+        boost::system::error_code set_option(const Option & opt,
+                                             boost::system::error_code & ec) {
+            return get_service().set_option<Handler>(implementation, opt, ec);
+        }
+
         /** \brief Set an option on a socket
          *  \tparam T type which must conform the asio SettableSocketOption concept
          *  \param opt T option to set
@@ -204,6 +216,19 @@ namespace aziomq {
         void set_option(const Option & opt) {
             boost::system::error_code ec;
             if (set_option(opt, ec))
+                throw boost::system::system_error(ec);
+        }
+
+        /** \brief as for set_option, but only for an associated handler
+         *  \tparam Handler to set option on
+         *  \tparam T type which must conform the asio SettableSocketOption concept
+         *  \param opt T option to set
+         *  \throw boost::system::system_error
+         */
+        template<typename Handler, typename Option>
+        void set_option(const Option & opt) {
+            boost::system::error_code ec;
+            if (set_option<Handler>(opt, ec))
                 throw boost::system::system_error(ec);
         }
 
@@ -218,6 +243,18 @@ namespace aziomq {
             return get_service().get_option(implementation, opt, ec);
         }
 
+        /** \brief as for get_option bu only for an associated handler
+         *  \tparam Handler to get option from
+         *  \tparam T must conform to the asio GettableSocketOption concept
+         *  \param opt T option to get
+         *  \param ec error_code to capture error
+         */
+        template<typename Handler, typename Option>
+        boost::system::error_code get_option(Option & opt,
+                                             boost::system::error_code & ec) {
+            return get_service().get_option<Handler>(implementation, opt, ec);
+        }
+
         /** \brief Get an option from a socket
          *  \tparam T must conform to the asio GettableSocketOption concept
          *  \param opt T option to get
@@ -230,6 +267,18 @@ namespace aziomq {
                 throw boost::system::system_error(ec);
         }
 
+        /** \brief as for get_option but only for an associated handler
+         *  \tparam Handler to get option from
+         *  \tparam T must conform to the asio GettableSocketOption concept
+         *  \param opt T option to get
+         *  \throw boost::system::system_error
+         */
+        template<typename Handler, typename Option>
+        void get_option(Option & opt) {
+            boost::system::error_code ec;
+            if (get_option<Handler>(opt, ec))
+                throw boost::system::system_error(ec);
+        }
         /** \brief Receive some data from the socket
          *  \tparam MutableBufferSequence
          *  \param buffers buffer(s) to fill on receive
@@ -681,6 +730,7 @@ namespace aziomq {
          *  following protocol:
          *      struct handler {
          *          void on_install();
+         *          void on_remove();
          *
          *          template<typename Option>
          *          error_code set_option(Option const&, error_code &);
@@ -689,12 +739,6 @@ namespace aziomq {
          *          error_code get_option(Option &, error_code &);
          *      };
          *  with the supplied socket.
-         *  \remark Only one such registration may be made
-         *  per socket.  The supplied type will have it's on_install() method called
-         *  when the instance is installing on the socket.  The type will have
-         *  the same lifetime as the owning socket.  If on_install() throws, the
-         *  exception will propagate through this call and the socket will not be
-         *  changed.
          *  \remark set/get_option allows the caller to interract with the handler
          *  from the socket interface. If the handler does not support the supplied,
          *  option, the handler should return errc::not_supported.  Handler options
@@ -712,7 +756,16 @@ namespace aziomq {
         template<typename T>
         bool associate_handler(T handler) {
             handler_model<T> h(std::move(handler));
-            return get_service().associate_handler<handler_model<T>>(implementation, std::move(h));
+            return get_service()
+                .associate_handler<handler_model<T>>(implementation,
+                                                     std::type_index(typeid(T)),
+                                                     std::move(h));
+        }
+
+        template<typename Handler>
+        bool remove_handler() {
+            return get_service().
+                remove_handler(implementation, std::type_index(typeid(Handler)));
         }
 
     private:
@@ -727,6 +780,8 @@ namespace aziomq {
             handler_model & operator=(const handler_model &) = delete;
 
             void on_install() override { data_.on_install(); }
+            void on_remove() override { data_.on_remove(); }
+
             boost::system::error_code set_option(service_type::opt_concept const& opt,
                                                  boost::system::error_code & ec) override {
                 return data_.set_option(opt, ec);
@@ -782,7 +837,8 @@ namespace aziomq {
                 });
             }
 
-            virtual void on_install() { run(shared_from_this()); }
+            void on_remove() override { }
+            void on_install() override { run(shared_from_this()); }
             boost::system::error_code set_option(service_type::opt_concept const&,
                                                  boost::system::error_code & ec) override {
                 return ec = make_error_code(boost::system::errc::not_supported);
@@ -796,7 +852,10 @@ namespace aziomq {
 
         template<typename Handler>
         void associate_handler(Handler handler, const std::string & monitor_addr) {
-            get_service().associate_handler<monitor_impl>(implementation, *this, std::move(handler), monitor_addr);
+            get_service()
+                .associate_handler<monitor_impl>(implementation,
+                                                 std::type_index(typeid(monitor_impl)),
+                                                 *this, std::move(handler), monitor_addr);
         }
     };
 }
