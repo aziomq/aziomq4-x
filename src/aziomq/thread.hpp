@@ -11,22 +11,37 @@
 
 #include "socket.hpp"
 #include "option.hpp"
+#include "util/expected.hpp"
 
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/signal_set.hpp>
+#include <boost/container/flat_map.hpp>
+#include <boost/exception/info_tuple.hpp>
+#include <boost/exception/error_info.hpp>
+#include <boost/exception/info.hpp>
+#include <boost/system/error_code.hpp>
+#include <boost/system/system_error.hpp>
 
 #include <string>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <functional>
+#include <stdexcept>
 
 namespace aziomq {
 namespace thread {
     using is_alive = opt::peer::is_alive;
     using detached = opt::peer::detached;
     using last_error = opt::peer::last_error;
+    using start = opt::peer::start;
 
+    namespace error {
+        using thread_name = boost::error_info<struct tag_thread_name, std::string>;
+        using last_error = boost::error_info<struct tag_last_error, boost::system::error_code>;
+
+        struct shout_failure : virtual boost::exception { };
+    };
     /** \brief create a thread bound to one end of a pair of inproc sockets
      *  \param peer io_service to associate the peer (caller) end of the pipe
      *  \param f Function accepting a socket as it's first parameter and a
@@ -63,11 +78,18 @@ namespace thread {
     constexpr struct forked_thread {
         template<typename Function, typename...Args>
         socket operator()(boost::asio::io_service & peer, Function && f, Args&&... args) const {
-            return make_pipe(peer, std::bind(std::forward<Function>(f),
-                                             std::placeholders::_1,
-                                             std::forward<Args>(args)...));
+            return make_pipe(peer, false, std::bind(std::forward<Function>(f),
+                                                    std::placeholders::_1,
+                                                    std::forward<Args>(args)...));
         }
 
+        struct defer_start_t { };
+        template<typename Function, typename...Args>
+        socket operator()(boost::asio::io_service & peer, defer_start_t, Function && f, Args&&... args) const {
+            return make_pipe(peer, true, std::bind(std::forward<Function>(f),
+                                                   std::placeholders::_1,
+                                                   std::forward<Args>(args)...));
+        }
     private:
         using service_type = socket::service_type;
         struct concept
@@ -180,13 +202,17 @@ namespace thread {
 
             model(T data) : data_(std::move(data)) { }
 
-            void run(socket s) { data_(std::move(s)); }
+            void run(socket s) override { data_(std::move(s)); }
         };
 
         struct handler {
             weak_ptr p_;
+            bool defer_start_;
 
-            handler(weak_ptr p) : p_(std::move(p)) { }
+            handler(weak_ptr p, bool defer_start)
+                : p_(std::move(p))
+                , defer_start_(defer_start)
+            { }
 
             handler(handler && rhs) = default;
             handler & operator=(handler && rhs) = default;
@@ -199,6 +225,8 @@ namespace thread {
             }
 
             void on_install() {
+                if (defer_start_) return;
+
                 if (auto p = p_.lock())
                     p->run();
             }
@@ -222,6 +250,18 @@ namespace thread {
                         break;
                     case last_error::static_name::value :
                         ec = make_error_code(boost::system::errc::no_protocol_option);
+                        break;
+                    case start::static_name::value :
+                        {
+                            auto v = reinterpret_cast<start::value_t const*>(opt.data());
+                            if (*v && defer_start_) {
+                                defer_start_ = false;
+                                if (auto p = p_.lock())
+                                    p->run();
+                                else
+                                    ec = make_error_code(boost::system::errc::interrupted);
+                            }
+                        }
                         break;
                     default:
                         ec = make_error_code(boost::system::errc::not_supported);
@@ -260,6 +300,15 @@ namespace thread {
                                 ec = make_error_code(boost::system::errc::interrupted);
                         }
                         break;
+                    case start::static_name::value :
+                        {
+                            auto v = reinterpret_cast<start::value_t*>(opt.data());
+                            if (auto p = p_.lock())
+                                *v = defer_start_ && !p->is_stopped();
+                            else
+                                ec = make_error_code(boost::system::errc::interrupted);
+                        }
+                        break;
                     default:
                       ec = make_error_code(boost::system::errc::not_supported);
                       break;
@@ -269,13 +318,118 @@ namespace thread {
         };
 
         template<typename T>
-        static socket make_pipe(boost::asio::io_service & peer, T&& data) {
+        static socket make_pipe(boost::asio::io_service & peer, bool defer_start, T&& data) {
             auto p = std::make_shared<model<T>>(std::forward<T>(data));
             auto res = p->peer_socket(peer);
-            res.associate_handler(handler(std::move(p)));
+            res.associate_handler(handler(std::move(p), defer_start));
             return res;
         }
     } fork { };
+
+    class group {
+        using container_type = boost::container::flat_map<std::string, socket>;
+
+    public:
+        using expected_socket_ref = util::expected<socket::ref>;
+        using expected_socket = util::expected<socket>;
+        using expected_size = util::expected<size_t>;
+        using const_iterator = container_type::const_iterator;
+
+        group(boost::asio::io_service & io_service)
+            : io_service_(io_service)
+        { }
+
+        group(group const&) = delete;
+        group& operator=(group const&) = delete;
+
+        template<typename Function,
+                 typename... Args>
+        expected_socket_ref create_thread(std::string name, Function && f, Args&&... args) {
+            auto s = fork(io_service_, forked_thread::defer_start_t(), std::forward<Function>(f), std::forward<Args>(args)...);
+            auto ib = sockets_.insert(std::make_pair(std::move(name), std::move(s)));
+            auto& res = ib.first->second;
+            if (ib.second)
+                res.set_option(start());
+            return std::ref(res);
+        }
+
+        expected_socket remove_thread(std::string const& name) {
+            auto it = sockets_.find(name);
+            if (it == std::end(sockets_))
+                return expected_socket::from_exception(std::runtime_error("not found"));
+            expected_socket res(std::move(it->second));
+            sockets_.erase(it);
+            return res;
+        }
+
+        // remove thread and send it a (presumably final) message
+        template<typename ConstBufferSequence>
+        expected_socket remove_thread(std::string const& name,
+                                      ConstBufferSequence const& buffers,
+                                      socket::message_flags flags) {
+            auto res = remove_thread(name);
+            if (res.valid()) {
+                auto& s = res.get();
+                boost::system::error_code ec;
+                s.send(buffers, flags, ec);
+                if (ec)
+                    return expected_socket::from_exception(boost::system::system_error(ec));
+            }
+            return res;
+        }
+
+        void erase_thread(std::string const& name) { sockets_.erase(name); }
+
+        const_iterator begin() const { return std::begin(sockets_); }
+        const_iterator end() const { return std::end(sockets_); }
+
+        bool in_pool(std::string const& name) const {
+            auto it = sockets_.find(name);
+            return it != std::end(sockets_);
+        }
+
+        expected_socket_ref get(std::string const& name) const {
+            auto it = sockets_.find(name);
+            if (it != std::end(sockets_))
+                return std::ref(const_cast<socket&>(it->second));
+            return expected_socket_ref::from_exception(std::runtime_error("not found"));
+        }
+
+        template<typename ConstBufferSequence>
+        expected_size whisper(std::string const& name,
+                              ConstBufferSequence const& buffers,
+                              socket::message_flags flags) {
+            auto it = sockets_.find(name);
+            if (it == std::end(sockets_))
+                expected_size::from_exception(boost::system::system_error(make_error_code(boost::system::errc::no_link)));
+            boost::system::error_code ec;
+            auto res = it->second.send(buffers, flags, ec);
+            if (ec)
+                expected_size::from_exception(boost::system::system_error(ec));
+            return res;
+        }
+
+        template<typename ConstBufferSequence>
+        expected_size shout(ConstBufferSequence const& buffers,
+                            socket::message_flags flags) {
+            size_t res = 0;
+            for(auto& s : sockets_) {
+                boost::system::error_code ec;
+                auto v = s.second.send(buffers, flags, ec);
+                if (ec)
+                    return expected_size::from_exception(
+                                error::shout_failure()
+                                    << error::thread_name(s.first)
+                                    << error::last_error(ec));
+                res += v;
+            }
+            return res;
+        }
+
+    private:
+        boost::asio::io_service & io_service_;
+        container_type sockets_;
+    };
 } // namespace pipe
 } // namespace aziomq
 #endif // AZIOMQ_IO_PIPE_HPP_

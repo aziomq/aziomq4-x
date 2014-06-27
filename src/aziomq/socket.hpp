@@ -53,6 +53,7 @@ namespace aziomq {
         using more_result = service_type::more_result;
         using proxy_type = service_type::proxy_type;
         using raw_message = detail::message;
+        using ref = std::reference_wrapper<socket>;
 
         // socket options
         using type = opt::type;
